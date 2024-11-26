@@ -8,3 +8,4 @@ pillow
 tqdm
 websockets
 pysrt
+python-dotenv

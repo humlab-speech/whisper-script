@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import os
 from typing import Any, Union
 import tempfile
-from .whisperxsettings import WhisperSettings
+from .whispersettings import WhisperSettings
 import pysrt
 
 
