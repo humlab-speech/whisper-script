@@ -1,0 +1,8 @@
+env/*
+output/*
+.env
+*.wav
+*.WAV
+*.srt
+demo/*
+__pycache__*
