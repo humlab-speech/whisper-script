@@ -32,6 +32,7 @@ BASIC_AUTH_PASSWORD=
 GRADIO_WHISPERX_ENDPOINT=https://your.ip
 ```
 
+if your configuration does not use HTTPS basic login, omit those lines or leave them empty.
 
 
 
