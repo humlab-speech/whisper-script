@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import WhisperTranscriber
 from WhisperTranscriber.configuration_reader import ConfigurationReader
 import os
@@ -50,9 +52,16 @@ def main():
         ).get_configurations()
     else:
         if not os.path.exists(config_file_path):
-            raise FileNotFoundError(
-                f"Configuration file {config_file_path} does not exist."
-            )
+            # It is not an absolute path, look instead in the configuration directory, and add .json if not present:
+            if not config_file_path.endswith(".json"):
+                config_file_path += ".json"
+            # Get directory of the currently executing script:
+            script_directory = os.path.dirname(os.path.realpath(__file__))
+            config_file_path = os.path.join(script_directory, 'configuration', config_file_path)
+            if not os.path.exists(config_file_path):
+                raise FileNotFoundError(
+                    f"Configuration file {config_file_path} does not exist."
+                )
         configurations = ConfigurationReader(config_file_path).get_configurations()
 
     if not os.path.exists(output_base_path):

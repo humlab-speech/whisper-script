@@ -23,7 +23,7 @@ class Transcriber:
     Consider if we should use the API to getthese instead; however not very useful if we must connect first...
     """
 
-    class WhisperXModel(Enum):
+    class WhisperModel(Enum):
         TINY_EN = "tiny.en"
         TINY = "tiny"
         BASE_EN = "base.en"
@@ -46,7 +46,7 @@ class Transcriber:
 
     def __init__(self, download_path: Path = None):
         """
-        Initializes the WhisperXTranscriber instance.
+        Initializes the WhisperTranscriber instance.
 
         Args:
           download_path (Path): The path where files will be downloaded. If not specified, a temporary directory will be used.
@@ -116,7 +116,7 @@ class Transcriber:
     def transcribe(
         self,
         file_name: str,
-        model: Union[str, WhisperXModel] = WhisperXModel.LARGE_V2,
+        model: Union[str, WhisperModel] = WhisperModel.LARGE_V2,
         vad: bool = False,
         language: str = "Automatic Detection",
         output_path="./output",
@@ -134,17 +134,17 @@ class Transcriber:
         if not os.path.exists(file_name):
             raise FileNotFoundError(f"File not found: {file_name}")
 
-        # If model is a string, convert it to WhisperXModel enum
+        # If model is a string, convert it to WhisperModel enum
         if isinstance(model, str):
             try:
-                model = self.WhisperXModel(model.lower())
+                model = self.WhisperModel(model.lower())
             except ValueError:
                 raise ValueError(f"Invalid model name: {model}")
 
-        # Ensure model is of type WhisperXModel
-        if not isinstance(model, self.WhisperXModel):
+        # Ensure model is of type WhisperModel
+        if not isinstance(model, self.WhisperModel):
             raise TypeError(
-                f"Model must be of type WhisperXModel or str, got {type(model)}"
+                f"Model must be of type Whisper model or str, got {type(model)}"
             )
 
         settings.upload_file = [handle_file(file_name)]
