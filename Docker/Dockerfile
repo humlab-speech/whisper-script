@@ -34,4 +34,4 @@ ENV PATH="/app/venv/bin:/app:$PATH"
 
 
 # Default command (optional, can be overridden)
-CMD ["python", "--version"]
+CMD ["run_whisper.py", "--configuration default_config", "--input /input", "--output /output"]

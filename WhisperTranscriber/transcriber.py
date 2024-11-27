@@ -53,6 +53,10 @@ class Transcriber:
         """
         # Load environment variables from .env file
         load_dotenv()
+        if not os.getenv("GRADIO_WHISPERX_ENDPOINT"):
+            raise ValueError(
+                "GRADIO_WHISPERX_ENDPOINT environment variable not found. Did you forget to set it in the .env file?"
+            )
 
         # If no download path is specified, create a temporary directory
         if download_path is None:

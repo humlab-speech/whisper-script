@@ -57,7 +57,9 @@ def main():
                 config_file_path += ".json"
             # Get directory of the currently executing script:
             script_directory = os.path.dirname(os.path.realpath(__file__))
-            config_file_path = os.path.join(script_directory, 'configurations', config_file_path)
+            config_file_path = os.path.join(
+                script_directory, "configurations", config_file_path
+            )
             if not os.path.exists(config_file_path):
                 raise FileNotFoundError(
                     f"Configuration file {config_file_path} does not exist."
