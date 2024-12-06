@@ -1,29 +1,34 @@
+"""
+Transcriber module for Whisper API.
+
+Classes:
+    Transcriber: Manages transcription, client setup, auth, and file handling.
+"""
+
+import tempfile
 from enum import Enum
 from pathlib import Path
-from gradio_client import Client, handle_file
-import httpx
-from dotenv import load_dotenv
 import os
-from typing import Any, Union
-import tempfile
-from .whispersettings import WhisperSettings
+from typing import Union
+import atexit
+from datetime import datetime
+
+import httpx
 import pysrt
+from dotenv import load_dotenv
+from gradio_client import Client, handle_file
+
+from .whispersettings import WhisperSettings
 
 
 class Transcriber:
     """
-    A transcriber
-
-    Attributes:
-        auth (Any): The authentication credentials.
-        client (Client): The client used for making requests.
-    """
-
-    """
-    Consider if we should use the API to getthese instead; however not very useful if we must connect first...
+    Manages transcription, client setup, auth, and file handling.
     """
 
     class WhisperModel(Enum):
+        """Class to define the available Whisper models."""
+
         TINY_EN = "tiny.en"
         TINY = "tiny"
         BASE_EN = "base.en"
@@ -61,6 +66,9 @@ class Transcriber:
         # If no download path is specified, create a temporary directory
         if download_path is None:
             self.temp_dir = tempfile.TemporaryDirectory()
+            atexit.register(
+                self.temp_dir.cleanup
+            )  # Clean up the temporary directory on exit
             self.download_path = Path(self.temp_dir.name)
         else:
             self.download_path = download_path
@@ -99,10 +107,8 @@ class Transcriber:
     def get_api_dict(self):
         return self.client.view_api(print_info=False, return_format="dict")
 
-    def get_models(self):
-        return self.client.get_models()
-
-    def srt_to_txt(self, srt_file_path):
+    @staticmethod
+    def srt_to_txt(srt_file_path):
         # Load the .srt file
         subs = pysrt.open(srt_file_path)
 
@@ -111,7 +117,7 @@ class Transcriber:
         txt_file_path = base + ".txt"
 
         # Open the .txt file (or create it if it doesn't exist)
-        with open(txt_file_path, "w") as txt_file:
+        with open(txt_file_path, "w", encoding="utf-8") as txt_file:
             # Loop through each subtitle in the .srt file
             for sub in subs:
                 # Write the subtitle text to the .txt file
@@ -126,7 +132,6 @@ class Transcriber:
         output_path="./output",
         tag: str = None,
         override_output_folder: str = None,
-        write_results=False,
         settings: WhisperSettings = None,
         ## kwargs are optional settings to modify!
         **kwargs,
@@ -142,8 +147,8 @@ class Transcriber:
         if isinstance(model, str):
             try:
                 model = self.WhisperModel(model.lower())
-            except ValueError:
-                raise ValueError(f"Invalid model name: {model}")
+            except ValueError as exc:
+                raise ValueError(f"Invalid model name: {model}") from exc
 
         # Ensure model is of type WhisperModel
         if not isinstance(model, self.WhisperModel):
@@ -173,15 +178,14 @@ class Transcriber:
 
         print("Moving files: ", filepath_list)
 
-        files = {
-            os.path.basename(file): open(file, "r").read() for file in filepath_list
-        }
+        files = {}
+        for file in filepath_list:
+            with open(file, "r", encoding="utf-8") as f:
+                files[os.path.basename(file)] = f.read()
 
         # Check that the output folder exists, and create it if not:
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-
-        from datetime import datetime
 
         for filename, content in files.items():
             # Output path should be output_folder/YYYY_MM_DD/model_type/VAD_TRUE_OR_FALSE/filename:
@@ -202,13 +206,15 @@ class Transcriber:
                 os.makedirs(output_path, exist_ok=True)
 
             # Save it to the appropriate folder
-            with open(os.path.join(output_path, filename), "w") as file:
+            with open(
+                os.path.join(output_path, filename), "w", encoding="utf-8"
+            ) as file:
                 file.write(content)
                 print(f"File saved: {os.path.join(output_path, filename)}")
             # Convert the just saved .srt file to .txt
             if filename.endswith(".srt"):
                 print("Converting file to txt")
-                self.srt_to_txt(os.path.join(output_path, filename))
+                Transcriber.srt_to_txt(os.path.join(output_path, filename))
 
             # Also save the arguments used to call this function:
             # Save both positional arguments and kwargs
@@ -220,21 +226,12 @@ class Transcriber:
                 "output_path": output_path,
                 "tag": tag,
                 "override_output_folder": override_output_folder,
-                "write_results": write_results,
                 **kwargs,
             }
-            with open(os.path.join(output_path, filename + "_args.txt"), "w") as file:
+            with open(
+                os.path.join(output_path, filename + "_args.txt"), "w", encoding="utf-8"
+            ) as file:
                 file.write(str(args_to_save))
                 print(
                     f"Arguments saved: {os.path.join(output_path, filename + '_args.txt')}"
                 )
-
-            # ALso save the results for each, so that the user can access them, if wanted:
-            if write_results:
-                with open(
-                    os.path.join(output_path, filename + "_results.txt"), "w"
-                ) as file:
-                    file.write(result)
-                    print(
-                        f"Result saved: {os.path.join(output_path, filename + '.txt')}"
-                    )
