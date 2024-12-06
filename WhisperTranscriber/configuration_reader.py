@@ -1,9 +1,11 @@
+"""
+A reader for whisper configuration files, to be used with the WhisperTranscriber module.
+"""
 import os
 import json
 import tempfile
 
 import importlib
-import os
 import sys
 
 
@@ -54,8 +56,10 @@ from WhisperTranscriber.configuration import Configuration
 
 
 class ConfigurationReader:
-    def __init__(self, configuration):
-        self.config_file_path = configuration
+    """A configuraion reader for whisper configuration files.
+    """
+    def __init__(self, configuration_path: str):
+        self.config_file_path = configuration_path
         # Check if the configuration is a file path
         if os.path.isfile(self.config_file_path):
             # Verify that the file is readable
@@ -66,21 +70,22 @@ class ConfigurationReader:
                 )
             # Try to load the JSON from the file
             try:
-                config = json.load(open(self.config_file_path))
-            except ValueError:
+                with open(self.config_file_path, encoding='utf-8') as opened_file:
+                    config = json.load(opened_file)
+            except ValueError as exc:
                 raise ValueError(
                     "The specified configuration file does not appear to be valid JSON: "
                     + self.config_file_path
-                )
+                ) from exc
         else:
             # If the configuration is not a file path, try to parse it as a JSON string
             try:
                 config = json.loads(self.config_file_path)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 raise ValueError(
                     "The specified configuration does not appear to be valid JSON: "
                     + self.config_file_path
-                )
+                ) from exc
         # Check that config has key 'run_configuration':
         if "run_configuration" not in config:
             raise ValueError(
@@ -98,6 +103,7 @@ class ConfigurationReader:
     #     self.configurations = config["run_configuration"]
 
     def get_configurations(self) -> list[Configuration]:
+        """Get all loaded configurations as a list of Configuration objects."""
         print(self.configurations)
         return [Configuration(config) for config in self.configurations]
 
@@ -110,14 +116,8 @@ if __name__ == "__main__":
         temp.flush()
         temp_path = temp.name
         config_reader = ConfigurationReader(temp_path)
-        config_reader.parse_config_file()
         configurations = config_reader.get_configurations()
 
         for configuration in configurations:
             print("Now executing using configuration:\n------", configuration, "------")
             configuration.transcribe("ZOOM0020_LR.WAV")
-
-    # print(config_reader.config)
-
-    # print(config_reader.config["transcription_service"])
-    # print(config

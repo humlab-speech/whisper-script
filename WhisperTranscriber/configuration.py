@@ -1,14 +1,53 @@
-from WhisperTranscriber.transcriber import Transcriber
+"""
+A module to handle the configuration for the WhisperTranscriber.
+
+Classes:
+    Configuration: A class to handle the configuration for the WhisperTranscriber.
+"""
+
 import datetime
 import json
 import os
 
+from WhisperTranscriber.transcriber import Transcriber
+
 
 class Configuration:
+    """
+    A class to handle the configuration for the WhisperTranscriber.
+
+    Attributes:
+        config (dict): A dictionary containing the configuration parameters.
+
+    Methods:
+        __init__(config):
+            Initializes the Configuration object with the given config dictionary.
+
+        transcribe(filename: str, output_base_path: str = "./output"):
+            Transcribes the given audio file using the configuration parameters.
+            Args:
+                filename (str): The path to the audio file to be transcribed.
+                output_base_path (str, optional): The base path where the output will be saved.
+                    Defaults to "./output".
+
+        __str__():
+            Returns a JSON string representation of the configuration.
+    """
     def __init__(self, config):
         self.config = config
 
     def transcribe(self, filename: str, output_base_path: str = "./output"):
+        """
+        Transcribes the given audio file and saves the transcription to the specified output directory.
+        Args:
+            filename (str): The path to the audio file to be transcribed.
+            output_base_path (str, optional): The base path where the transcription output will be saved.
+                                              Defaults to "./output".
+        Raises:
+            KeyError: If required configuration keys are missing.
+        Returns:
+            None
+        """
         transcriber = Transcriber()
         config = self.config.copy()
         # get full path of filename:
