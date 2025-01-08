@@ -1,52 +1,47 @@
 {
     "run_configuration": [
         {
-            "description": "swedish_large_v3_with_vad_0.5",
+            "description": "Swedish large v3 with VAD 0.5",
             "language": "swedish",
             "model": "large-v3",
-            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
             "vad_speech_threshold": 0.5,
-            "subfolder": "safe_swedish/large_v3/vad/0.5"
+            "subfolder": "swedish_large_v3_vad_0.5"
         },          
         {
-            "description": "swedish_large_v2_with_vad_0.5",
+            "description": "Swedish large v2 with VAD 0.5",
             "language": "swedish",
             "model": "large-v2",
-            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
             "vad_speech_threshold": 0.5,
-            "subfolder": "safe_swedish/large_v2/vad/0.5"
+            "subfolder": "swedish_large_v2_vad_0.5"
         },
         {
-            "description": "swedish_large_v2_with_vad_0.3",
+            "description": "Swedish large v2 with VAD 0.3",
             "language": "swedish",
             "model": "large-v2",
-            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
             "vad_speech_threshold": 0.3,
-            "subfolder": "safe_swedish/large_v2/vad/0.3"
+            "subfolder": "swedish_large_v2_vad_0.3"
         },
         {
-            "description": "swedish_large_v2_no_vad",
+            "description": "Swedish large v2 no VAD",
             "language": "swedish",
             "model": "large-v2",
-            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": false,
-            "subfolder": "safe_swedish/large_v2/no_vad/"
+            "subfolder": "swedish_large_v2_no_vad"
         },
         {
             "description": "Swedish with condition on previous text, large-v2, no VAD",
             "language": "swedish",
             "model": "large-v2",
-            "file_format": "SRT",
             "condition_on_prev_text": true,
             "vad": false,
-            "subfolder": "safe_swedish/large_v2/no_vad/condition"
+            "subfolder": "swedish_large_v2_no_vad_condition"
         }
     ]
 }
