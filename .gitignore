@@ -6,3 +6,5 @@ output/*
 *.srt
 demo/*
 __pycache__*
+venv
+Transcriptions/*

@@ -4,6 +4,9 @@ import WhisperTranscriber
 from WhisperTranscriber.configuration_reader import ConfigurationReader
 import os
 import argparse
+import tempfile
+import subprocess
+import io
 
 
 def find_audio_files(directory, extension=".wav"):
@@ -12,6 +15,47 @@ def find_audio_files(directory, extension=".wav"):
         for f in os.listdir(directory)
         if f.lower().endswith(extension.lower())
     ]
+    
+def convert_to_wav(file: str) -> io.BytesIO:
+    # Create a buffer to store the converted audio
+    converted_audio = io.BytesIO()
+    
+    # Ensure the file exists
+    if not os.path.exists(file):
+        raise FileNotFoundError(f"File {file} does not exist.")
+    
+    # Convert the audio file to WAV format
+    try:
+        # Run ffmpeg and pipe the output to stdout
+        process = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-i", file,          # Input file
+                "-acodec", "pcm_s16le",  # Audio codec: PCM 16-bit little-endian
+                "-ac", "1",          # Number of audio channels: 1 (mono)
+                "-ar", "16000",      # Audio sample rate: 16 kHz
+                "-f", "wav",         # Output format: WAV
+                "pipe:1"             # Output to stdout
+            ],
+            stdout=subprocess.PIPE,  # Capture stdout
+            stderr=subprocess.PIPE   # Capture stderr (optional, for debugging)
+        )
+        
+        # Read the output from ffmpeg's stdout
+        output_audio_data, error = process.communicate()
+
+        # Check if ffmpeg encountered an error
+        if process.returncode != 0:
+            raise RuntimeError(f"FFmpeg error: {error.decode('utf-8')}")
+
+        # Write the output audio data to the buffer
+        converted_audio.write(output_audio_data)
+        converted_audio.seek(0)  # Reset the buffer's position to the beginning
+
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Error converting {file}: {e}")
+    
+    return converted_audio
 
 
 def main():
