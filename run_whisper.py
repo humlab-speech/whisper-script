@@ -9,12 +9,19 @@ import subprocess
 import io
 
 
-def find_audio_files(directory, extension=".wav"):
-    return [
-        os.path.join(directory, f)
-        for f in os.listdir(directory)
-        if f.lower().endswith(extension.lower())
-    ]
+def find_audio_files(directory, extension=".wav", recursive=True):
+    found_files = []
+    if recursive:
+        for root, _, files in os.walk(directory):
+            for f_name in files:
+                if f_name.lower().endswith(extension.lower()):
+                    found_files.append(os.path.join(root, f_name))
+    else:
+        for f_name in os.listdir(directory):
+            file_path = os.path.join(directory, f_name)
+            if os.path.isfile(file_path) and f_name.lower().endswith(extension.lower()):
+                found_files.append(file_path)
+    return found_files
     
 def convert_to_wav(file: str) -> io.BytesIO:
     # Create a buffer to store the converted audio
@@ -77,14 +84,22 @@ def main():
     parser.add_argument(
         "--output", type=str, required=True, help="Base path to the output directory."
     )
+    parser.add_argument(
+        "--no-recursive",
+        action="store_false",
+        dest="recursive",
+        help="Disable recursive search in subdirectories. Default is to search recursively.",
+    )
+    parser.set_defaults(recursive=True)
 
     args = parser.parse_args()
 
     input_path = args.input_path
     config_file_path = args.configuration
-    output_base_path = args.output
+    user_specified_output_base_path = args.output # Renamed for clarity
 
-    print("Settings received: ", input_path, config_file_path, output_base_path)
+    print("Settings received: ", input_path, config_file_path, user_specified_output_base_path)
+    print(f"Recursive search: {args.recursive}")
 
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input path {input_path} does not exist.")
@@ -110,30 +125,49 @@ def main():
                 )
         configurations = ConfigurationReader(config_file_path).get_configurations()
 
-    if not os.path.exists(output_base_path):
-        os.makedirs(output_base_path)
+    if not os.path.exists(user_specified_output_base_path):
+        os.makedirs(user_specified_output_base_path)
 
-    # Check if it is a directory; if so, get all files within the directory:
+    audio_files = []
     if os.path.isdir(input_path):
-        # We currently only look for .wav files in the exact directory, not in subdirectories:
-        audio_files = find_audio_files(input_path, ".wav")
-    else:
-        # It exists and is a file, so just use that:
+        audio_files = find_audio_files(input_path, ".wav", recursive=args.recursive)
+    elif os.path.isfile(input_path):
         audio_files = [input_path]
+        # Check for common audio types, ffmpeg will handle actual conversion capability
+        if not input_path.lower().endswith((".wav", ".mp3", ".m4a", ".flac", ".ogg")):
+             print(f"Warning: Input file {input_path} may not be a common audio type. Processing will attempt conversion.")
+    else:
+        raise FileNotFoundError(f"Input path {input_path} is not a valid file or directory.")
+
 
     if len(audio_files) == 0:
-        print("No audio files found in the specified directory.")
-        return  # No need to continue if no audio files are found.
+        print("No audio files found matching criteria.")
+        return
 
     print(
-        "Starting transcribation, a total of ", len(audio_files), " audio files found."
+        f"Starting transcription. Found {len(audio_files)} audio files."
     )
 
     for configuration in configurations:
         print("Configuration: ", configuration)
         for audio_file in audio_files:
             print("Transcribing audio file: ", audio_file)
-            configuration.transcribe(audio_file, output_base_path=output_base_path)
+
+            # Determine the base directory from which to calculate the relative path
+            if os.path.isdir(input_path):
+                reference_input_dir = input_path
+            else: # input_path is a file
+                reference_input_dir = os.path.dirname(input_path)
+            
+            # Get the relative path of the audio file's directory with respect to the reference_input_dir
+            relative_dir_of_audio_file = os.path.relpath(os.path.dirname(audio_file), start=reference_input_dir)
+            
+            # Call transcribe with the main output path from args and the relative subdirectory
+            configuration.transcribe(
+                audio_file,
+                output_base_path=user_specified_output_base_path, # Root output path from arguments
+                relative_audio_subdir=relative_dir_of_audio_file # Relative path like "subfolder1/hello/you" or "."
+            )
 
 
 if __name__ == "__main__":
