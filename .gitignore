@@ -8,3 +8,4 @@ demo/*
 __pycache__*
 venv
 Transcriptions/*
+configurations/*.json

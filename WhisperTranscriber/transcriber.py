@@ -134,6 +134,8 @@ class Transcriber:
         tag: str = None,
         override_output_folder: str = None,
         settings: WhisperSettings = None,
+        original_filename: str = None,  # Optional parameter to specify the output filename
+        disable_args_file: bool = False,  # Optional parameter to disable writing args file (functionality removed)
         ## kwargs are optional settings to modify!
         **kwargs,
     ):
@@ -143,6 +145,10 @@ class Transcriber:
         # Verify that the file exists:
         if not os.path.exists(file_name):
             raise FileNotFoundError(f"File not found: {file_name}")
+
+        # Note: The disable_args_file parameter is kept for backward compatibility,
+        # but the functionality to create separate args.txt files has been removed.
+        # This parameter is now only used to coordinate with the Configuration class.
 
         # If model is a string, convert it to WhisperModel enum
         if isinstance(model, str):
@@ -206,33 +212,23 @@ class Transcriber:
             if not os.path.exists(output_path):
                 os.makedirs(output_path, exist_ok=True)
 
+            # Determine the output filename - use original_filename if provided
+            output_filename = filename
+            if original_filename is not None:
+                # Get the extension from the original API output filename
+                extension = os.path.splitext(filename)[1]
+                # Create a new filename using the provided original_filename with the same extension
+                output_filename = f"{original_filename}{extension}"
+
             # Save it to the appropriate folder
             with open(
-                os.path.join(output_path, filename), "w", encoding="utf-8"
+                os.path.join(output_path, output_filename), "w", encoding="utf-8"
             ) as file:
                 file.write(content)
-                print(f"File saved: {os.path.join(output_path, filename)}")
+                print(f"File saved: {os.path.join(output_path, output_filename)}")
+            
             # Convert the just saved .srt file to .txt
-            if filename.endswith(".srt"):
+            if output_filename.endswith(".srt"):
                 print("Converting file to txt")
-                Transcriber.srt_to_txt(os.path.join(output_path, filename))
-
-            # Also save the arguments used to call this function:
-            # Save both positional arguments and kwargs
-            args_to_save = {
-                "file_name": file_name,
-                "model": model.value,
-                "vad": vad,
-                "language": language,
-                "output_path": output_path,
-                "tag": tag,
-                "override_output_folder": override_output_folder,
-                **kwargs,
-            }
-            with open(
-                os.path.join(output_path, filename + "_args.txt"), "w", encoding="utf-8"
-            ) as file:
-                file.write(str(args_to_save))
-                print(
-                    f"Arguments saved: {os.path.join(output_path, filename + '_args.txt')}"
-                )
+                Transcriber.srt_to_txt(os.path.join(output_path, output_filename))
+                
