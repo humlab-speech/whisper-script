@@ -1,47 +1,36 @@
 {
     "run_configuration": [
         {
-            "description": "Swedish large v3 with VAD 0.5",
+            "description": "swedish_kb_whisper_large_ct2_with_vad_0.3",
             "language": "swedish",
-            "model": "large-v3",
-            "condition_on_prev_text": false,
-            "vad": true,
-            "vad_speech_threshold": 0.5,
-            "subfolder": "swedish_large_v3_vad_0.5"
-        },          
-        {
-            "description": "Swedish large v2 with VAD 0.5",
-            "language": "swedish",
-            "model": "large-v2",
-            "condition_on_prev_text": false,
-            "vad": true,
-            "vad_speech_threshold": 0.5,
-            "subfolder": "swedish_large_v2_vad_0.5"
-        },
-        {
-            "description": "Swedish large v2 with VAD 0.3",
-            "language": "swedish",
-            "model": "large-v2",
+            "model": "kb-whisper-large-ct2",
+            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
             "vad_speech_threshold": 0.3,
-            "subfolder": "swedish_large_v2_vad_0.3"
+            "repetition_penalty": 1.3,
+            "beam_size": 10
         },
         {
-            "description": "Swedish large v2 no VAD",
+            "description": "swedish_kb_whisper_large_ct2_with_vad_0.5",
             "language": "swedish",
-            "model": "large-v2",
+            "model": "kb-whisper-large-ct2",
+            "file_format": "SRT",
+            "condition_on_prev_text": false,
+            "vad": true,
+            "vad_speech_threshold": 0.5,
+            "repetition_penalty": 1.3,
+            "beam_size": 10
+        },
+        {
+            "description": "swedish_kb_whisper_large_ct2_with_no_vad",
+            "language": "swedish",
+            "model": "kb-whisper-large-ct2",
+            "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": false,
-            "subfolder": "swedish_large_v2_no_vad"
-        },
-        {
-            "description": "Swedish with condition on previous text, large-v2, no VAD",
-            "language": "swedish",
-            "model": "large-v2",
-            "condition_on_prev_text": true,
-            "vad": false,
-            "subfolder": "swedish_large_v2_no_vad_condition"
+            "repetition_penalty": 1.3,
+            "beam_size": 10
         }
     ]
 }

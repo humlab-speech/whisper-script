@@ -30,9 +30,19 @@ This assumes we have a `.env`file in the folder we execute it, which should cont
 BASIC_AUTH_USERNAME=
 BASIC_AUTH_PASSWORD=
 GRADIO_WHISPERX_ENDPOINT=https://your.ip
+# For speaker diarization
+HF_TOKEN=your_huggingface_token
 ```
 
 if your configuration does not use HTTPS basic login, omit those lines or leave them empty.
+
+## Additional Options
+
+* `--enable-diarization`: Enable speaker diarization to identify different speakers in the transcription. Requires setting the `HF_TOKEN` environment variable with your HuggingFace token.
+* `--no-config-logs`: Disable creation of configuration log files in the output directory.
+* `--dry-run`: Show what actions would be taken without actually converting or transcribing.
+* `--run-description`: Run only the configuration with this specific description from the JSON file.
+* `--no-recursive`: Disable recursive search in the 'raw_audio' directory.
 
 
 
