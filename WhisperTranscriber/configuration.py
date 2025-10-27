@@ -38,6 +38,7 @@ class Configuration:
         __str__():
             Returns a JSON string representation of the configuration.
     """
+
     def __init__(self, config):
         self.config = config
 
@@ -58,19 +59,21 @@ class Configuration:
             return "sanitized_empty_name"
         return temp_name
 
-    def _write_config_log(self, 
-                         final_save_directory: str, 
-                         original_relative_path_to_raw: str,
-                         processed_filename: str,
-                         description: str,
-                         model_param: str,
-                         language_param: str,
-                         config: dict,
-                         sanitized_folder_name: str,
-                         output_base_path: str = None) -> None:
+    def _write_config_log(
+        self,
+        final_save_directory: str,
+        original_relative_path_to_raw: str,
+        processed_filename: str,
+        description: str,
+        model_param: str,
+        language_param: str,
+        config: dict,
+        sanitized_folder_name: str,
+        output_base_path: str = None,
+    ) -> None:
         """
         Writes a JSON log file with configuration parameters and file information.
-        
+
         Args:
             final_save_directory (str): The directory where the transcription and log will be saved
             original_relative_path_to_raw (str): The original path of the source file relative to raw_audio
@@ -91,72 +94,88 @@ class Configuration:
             # Extract the relative path from the final_save_directory
             # We want to construct a path like "2025-06-10/config_name/subdir"
             # without the base directory
-            
+
             # Calculate the relative path
             if output_base_path:
                 # Start by checking if the transcriptions_base_dir exists in final_save_directory
                 output_base_abs = str(Path(output_base_path).resolve())
                 final_save_directory_abs = str(Path(final_save_directory).resolve())
-                
+
                 # If final_save_directory starts with output_base_path, remove that prefix
                 if final_save_directory_abs.startswith(output_base_abs):
                     # Calculate the relative path by removing the output_base_path prefix
-                    relative_output_path = final_save_directory_abs[len(output_base_abs):].lstrip('/')
+                    relative_output_path = final_save_directory_abs[len(output_base_abs) :].lstrip("/")
                 else:
                     # Try to extract just the date and following directories
                     path_parts = Path(final_save_directory).parts
                     # Look for a part that could be a date (YYYY-MM-DD format)
                     date_index = None
                     for i, part in enumerate(path_parts):
-                        if len(part) == 10 and part[4] == '-' and part[7] == '-':  # Simple date format check
+                        if len(part) == 10 and part[4] == "-" and part[7] == "-":  # Simple date format check
                             date_index = i
                             break
-                    
+
                     if date_index is not None:
                         # If we found a date part, use it and everything after
-                        relative_output_path = '/'.join(path_parts[date_index:])
+                        relative_output_path = "/".join(path_parts[date_index:])
                     else:
                         # Fallback: just use the last 3 directory parts if available
-                        relative_output_path = '/'.join(path_parts[-min(3, len(path_parts)):])
+                        relative_output_path = "/".join(path_parts[-min(3, len(path_parts)) :])
             else:
                 # Fallback: just use the directory name and parent
                 path_parts = Path(final_save_directory).parts
-                relative_output_path = '/'.join(path_parts[-min(3, len(path_parts)):])
+                relative_output_path = "/".join(path_parts[-min(3, len(path_parts)) :])
 
             log_data = {
                 "original_file_relative_to_raw_audio": original_relative_path_to_raw,
                 "processed_wav_filename": processed_filename,
-                "transcription_output_directory": relative_output_path, 
+                "transcription_output_directory": relative_output_path,
                 "transcription_run_datetime_utc": datetime.datetime.utcnow().isoformat() + "Z",
                 "configuration_description": description,  # Original description, not sanitized
                 "configuration_model": model_param,
                 "configuration_language": language_param,
-                "all_parameters_used": config  # This includes all original config items for this run
+                "all_parameters_used": config,  # This includes all original config items for this run
             }
 
             # Ensure the directory for the log file exists (should be same as transcription output)
             Path(final_save_directory).mkdir(parents=True, exist_ok=True)
-            with open(params_log_path, 'w', encoding='utf-8') as f_log:
+            with open(params_log_path, "w", encoding="utf-8") as f_log:
                 json.dump(log_data, f_log, indent=4, ensure_ascii=False)
             logging.info(f"Wrote transcription parameters log to: {params_log_path}")
         except Exception as e:
             logging.error(f"Failed to write transcription parameters log to {final_save_directory}: {e}")
 
-    def transcribe(self, filename: str, output_base_path: str = "./output", relative_audio_subdir: str = ".", 
-                  original_relative_path_to_raw: str = "Unknown_Original_Path", disable_config_logs: bool = False):
+    def transcribe(
+        self,
+        filename: str,
+        output_base_path: str = "./output",
+        relative_audio_subdir: str = ".",
+        original_relative_path_to_raw: str = "Unknown_Original_Path",
+        disable_config_logs: bool = False,
+    ):
         """
         Transcribes the given audio file and saves the transcription to the specified output directory.
         Also writes a log file with transcription parameters.
+
         Args:
-            filename (str): The path to the audio file to be transcribed.
-            output_base_path (str, optional): The root path where the output will be saved.
-                                              Defaults to "./output".
-            relative_audio_subdir (str, optional): The relative subdirectory structure from the input,
-                                                   e.g., "subfolder1/hello" or ".".
-            original_relative_path_to_raw (str, optional): The original relative path of the source file
-                                                           from the raw_audio directory.
-            disable_config_logs (bool, optional): If True, skips creating the configuration log file.
-                                                  Defaults to False.
+            filename (str):
+                The path to the audio file to be transcribed.
+
+            output_base_path (str, optional):
+                The root path where the output will be saved.
+                Defaults to "./output".
+
+            relative_audio_subdir (str, optional):
+                The relative subdirectory structure from the input,
+                e.g., "subfolder1/hello" or ".".
+
+            original_relative_path_to_raw (str, optional):
+                The original relative path of the source file
+                from the raw_audio directory.
+
+            disable_config_logs (bool, optional):
+                If True, skips creating the configuration log file.
+                Defaults to False.
         """
         full_path = os.path.abspath(filename)
 
@@ -175,7 +194,10 @@ class Configuration:
         # Handle 'subfolder' from config (just removing it, as it's ignored)
         config_original_subfolder = active_config_params.pop("subfolder", None)
         if config_original_subfolder is not None:
-            print(f"INFO: The 'subfolder' key ('{config_original_subfolder}') in the configuration is being ignored. Folder name will be derived from 'description' or 'model'.")
+            print(
+                f"INFO: The 'subfolder' key ('{config_original_subfolder}') in the configuration is being ignored. "
+                "Folder name will be derived from 'description' or 'model'."
+            )
 
         # Determine the folder name: use sanitized description, fallback to sanitized model
         folder_name_source = description if description else model_param
@@ -198,28 +220,28 @@ class Configuration:
                 language_param=language_param,
                 config=self.config,
                 sanitized_folder_name=sanitized_folder_name,
-                output_base_path=output_base_path
+                output_base_path=output_base_path,
             )
         else:
             logging.info("Configuration log file creation is disabled. Skipping.")
 
         # Initialize the transcriber service
         whisper_service = Transcriber()
-        
+
         # Set up parameters for the transcriber
         active_config_params["original_filename"] = Path(filename).stem
-        
+
         # The disable_args_file parameter is passed to control coordination with transcriber
         # It disables unnecessary file creation when config logs are disabled
         active_config_params["disable_args_file"] = disable_config_logs
-        
+
         # Call the transcriber service
         whisper_service.transcribe(
             full_path,
             model=model_param,
             language=language_param,
             override_output_folder=final_save_directory,
-            **active_config_params
+            **active_config_params,
         )
 
     # Add a custom __str__ method to print the configuration:

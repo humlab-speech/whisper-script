@@ -3,7 +3,7 @@
 A robust audio transcription system using the Whisper API through a Gradio interface. This script automates the conversion of various audio formats to WAV and transcribes them using Whisper, maintaining organized directory structures throughout the process.
 
 The container we use for this is [Whisper-WebUI](https://github.com/jhj0517/Whisper-WebUI), as this
-container supports whisper, faster-whisper and insanely-fast-whisper backends, and can be called using the  
+container supports whisper, faster-whisper and insanely-fast-whisper backends, and can be called using the
 [gradio](https://www.gradio.app/) API.
 
 ## Features
@@ -114,17 +114,17 @@ Multiple configurations can be included in a single file and will be run sequent
 
 The script organizes files in a structured manner:
 
-1. **raw_audio/**: 
+1. **raw_audio/**:
    - Place your original audio files here
    - Supports nested subdirectories
    - All common audio formats (mp3, m4a, wav, mp4, etc.)
 
-2. **converted_wavs/**: 
+2. **converted_wavs/**:
    - Created automatically
    - Contains converted WAV files at 16kHz mono
    - Preserves the same directory structure as raw_audio/
 
-3. **transcriptions/**: 
+3. **transcriptions/**:
    - Created automatically
    - Organized by date, configuration, and directory structure
    - Example: `transcriptions/2025-06-10/large_swedish/subdir/filename.srt`
@@ -140,6 +140,3 @@ For each transcription, a log file is created with details about:
 - Timestamp
 
 This makes it easy to track which configuration was used for each transcription.
-
-
-

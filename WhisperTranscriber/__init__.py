@@ -1,6 +1,6 @@
 demo_config = """
 {
-    "run_configuration": [    
+    "run_configuration": [
         {
             "description": "swedish_large_v2_with_vad_0.5",
             "language": "swedish",

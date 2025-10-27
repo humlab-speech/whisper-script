@@ -1,5 +1,5 @@
 {
-    "run_configuration": [    
+    "run_configuration": [
         {
             "description": "Swedish transcription using large-v2 model with VAD threshold 0.5",
             "language": "swedish",

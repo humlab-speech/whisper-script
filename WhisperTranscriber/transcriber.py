@@ -5,13 +5,13 @@ Classes:
     Transcriber: Manages transcription, client setup, auth, and file handling.
 """
 
+import atexit
+import os
 import tempfile
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-import os
 from typing import Union
-import atexit
-from datetime import datetime
 
 import httpx
 import pysrt
@@ -45,7 +45,19 @@ class Transcriber:
         KB_WHISPER_LARGE = "kb-whisper-large-ct2"
 
         # class WhisperLanguages(Enum) =
-        # ['afrikaans', 'albanian', 'amharic', 'arabic', 'armenian', 'assamese', 'azerbaijani', 'bashkir', 'basque', 'belarusian', 'bengali', 'bosnian', 'breton', 'bulgarian', 'cantonese', 'catalan', 'chinese', 'croatian', 'czech', 'danish', 'dutch', 'english', 'estonian', 'faroese', 'finnish', 'french', 'galician', 'georgian', 'german', 'greek', 'gujarati', 'haitian creole', 'hausa', 'hawaiian', 'hebrew', 'hindi', 'hungarian', 'icelandic', 'indonesian', 'italian', 'japanese', 'javanese', 'kannada', 'kazakh', 'khmer', 'korean', 'lao', 'latin', 'latvian', 'lingala', 'lithuanian', 'luxembourgish', 'macedonian', 'malagasy', 'malay', 'malayalam', 'maltese', 'maori', 'marathi', 'mongolian', 'myanmar', 'nepali', 'norwegian', 'nynorsk', 'occitan', 'pashto', 'persian', 'polish', 'portuguese', 'punjabi', 'romanian', 'russian', 'sanskrit', 'serbian', 'shona', 'sindhi', 'sinhala', 'slovak', 'slovenian', 'somali', 'spanish', 'sundanese', 'swahili', 'swedish', 'tagalog', 'tajik', 'tamil', 'tatar', 'telugu', 'thai', 'tibetan', 'turkish', 'turkmen', 'ukrainian', 'urdu', 'uzbek', 'vietnamese', 'welsh', 'yiddish', 'yoruba', 'Automatic Detection']
+        # ['afrikaans', 'albanian', 'amharic', 'arabic', 'armenian', 'assamese', 'azerbaijani', 'bashkir',
+        # 'basque', 'belarusian', 'bengali', 'bosnian', 'breton', 'bulgarian', 'cantonese', 'catalan',
+        # 'chinese', 'croatian', 'czech', 'danish', 'dutch', 'english', 'estonian', 'faroese', 'finnish',
+        # 'french', 'galician', 'georgian', 'german', 'greek', 'gujarati', 'haitian creole', 'hausa',
+        # 'hawaiian', 'hebrew', 'hindi', 'hungarian', 'icelandic', 'indonesian', 'italian', 'japanese',
+        # 'javanese', 'kannada', 'kazakh', 'khmer', 'korean', 'lao', 'latin', 'latvian', 'lingala',
+        # 'lithuanian', 'luxembourgish', 'macedonian', 'malagasy', 'malay', 'malayalam', 'maltese',
+        # 'maori', 'marathi', 'mongolian', 'myanmar', 'nepali', 'norwegian', 'nynorsk', 'occitan',
+        # 'pashto', 'persian', 'polish', 'portuguese', 'punjabi', 'romanian', 'russian', 'sanskrit',
+        # 'serbian', 'shona', 'sindhi', 'sinhala', 'slovak', 'slovenian', 'somali', 'spanish',
+        # 'sundanese', 'swahili', 'swedish', 'tagalog', 'tajik', 'tamil', 'tatar', 'telugu', 'thai',
+        # 'tibetan', 'turkish', 'turkmen', 'ukrainian', 'urdu', 'uzbek', 'vietnamese', 'welsh',
+        # 'yiddish', 'yoruba', 'Automatic Detection']
 
     client: Client = None  # Class attribute with type hint
     download_path: Path
@@ -55,7 +67,8 @@ class Transcriber:
         Initializes the WhisperTranscriber instance.
 
         Args:
-          download_path (Path): The path where files will be downloaded. If not specified, a temporary directory will be used.
+          download_path (Path): The path where files will be downloaded.
+              If not specified, a temporary directory will be used.
         """
         # Load environment variables from .env file
         load_dotenv()
@@ -67,9 +80,7 @@ class Transcriber:
         # If no download path is specified, create a temporary directory
         if download_path is None:
             self.temp_dir = tempfile.TemporaryDirectory()
-            atexit.register(
-                self.temp_dir.cleanup
-            )  # Clean up the temporary directory on exit
+            atexit.register(self.temp_dir.cleanup)  # Clean up the temporary directory on exit
             self.download_path = Path(self.temp_dir.name)
         else:
             self.download_path = download_path
@@ -80,9 +91,7 @@ class Transcriber:
             username = os.getenv("BASIC_AUTH_USERNAME")
             password = os.getenv("BASIC_AUTH_PASSWORD")
             if username is None or password is None:
-                raise ValueError(
-                    "Username or password not found in environment variables."
-                )
+                raise ValueError("Username or password not found in environment variables.")
             self.auth = httpx.BasicAuth(username, password)
         except Exception as e:
             print(f"Error loading authentication credentials: {e}")
@@ -135,8 +144,8 @@ class Transcriber:
         override_output_folder: str = None,
         settings: WhisperSettings = None,
         original_filename: str = None,  # Optional parameter to specify the output filename
-        disable_args_file: bool = False,  # Optional parameter to disable writing args file (functionality removed)
-        ## kwargs are optional settings to modify!
+        disable_args_file: bool = False,  # Parameter to disable writing args file (functionality removed)
+        # kwargs are optional settings to modify!
         **kwargs,
     ):
         if settings is None:
@@ -159,9 +168,7 @@ class Transcriber:
 
         # Ensure model is of type WhisperModel
         if not isinstance(model, self.WhisperModel):
-            raise TypeError(
-                f"Model must be of type Whisper model or str, got {type(model)}"
-            )
+            raise TypeError(f"Model must be of type Whisper model or str, got {type(model)}")
 
         settings.upload_file = [handle_file(file_name)]
         settings["language"] = language
@@ -198,14 +205,10 @@ class Transcriber:
             # Output path should be output_folder/YYYY_MM_DD/model_type/VAD_TRUE_OR_FALSE/filename:
             current_date = datetime.now().strftime("%Y_%m_%d")
             model_type = model.value
-            vad_status = (
-                "Using_Silence_Reduction" if vad else "Not_Using_Silence_Reduction"
-            )
+            vad_status = "Using_Silence_Reduction" if vad else "Not_Using_Silence_Reduction"
 
             # Create the directory structure
-            output_path = os.path.join(
-                output_path, current_date, tag if tag else "", model_type, vad_status
-            )
+            output_path = os.path.join(output_path, current_date, tag if tag else "", model_type, vad_status)
             if override_output_folder is not None:  # Just use the specified regardless
                 output_path = override_output_folder
 
@@ -221,14 +224,11 @@ class Transcriber:
                 output_filename = f"{original_filename}{extension}"
 
             # Save it to the appropriate folder
-            with open(
-                os.path.join(output_path, output_filename), "w", encoding="utf-8"
-            ) as file:
+            with open(os.path.join(output_path, output_filename), "w", encoding="utf-8") as file:
                 file.write(content)
                 print(f"File saved: {os.path.join(output_path, output_filename)}")
-            
+
             # Convert the just saved .srt file to .txt
             if output_filename.endswith(".srt"):
                 print("Converting file to txt")
                 Transcriber.srt_to_txt(os.path.join(output_path, output_filename))
-                

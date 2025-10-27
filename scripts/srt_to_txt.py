@@ -1,6 +1,7 @@
-import pysrt
 import os
 import sys
+
+import pysrt
 
 
 def srt_to_txt(srt_file_path):

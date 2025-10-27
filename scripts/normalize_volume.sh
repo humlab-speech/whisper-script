@@ -16,7 +16,7 @@ mkdir -p "$dir/normalized"
 for file in "$dir"/*.wav; do
   # Extract the base filename without the extension
   base=$(basename "$file" .wav)
-  
+
   # Normalize the file and save it in the subdirectory
   ffmpeg -i "$file" -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=summary "$dir/normalized/${base}_normalized.wav"
 done
