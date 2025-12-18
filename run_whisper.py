@@ -15,7 +15,7 @@ from WhisperTranscriber.configuration_reader import ConfigurationReader
 # --- Configuration ---
 # Default extensions for conversion (can be overridden by command line)
 DEFAULT_CONVERT_EXTENSIONS = (
-    "wma,wmv,mp3,mp4,mkv,aac,flac,ogg,m4a,avi,mov,flv,mpeg,mpg,webm"  # Added common non-wav types
+    "wma,wmv,mp3,mp4,mkv,aac,flac,ogg,m4a,wav,avi,mov,flv,mpeg,mpg,webm"  # Added common non-wav types, including wav
 )
 TARGET_WAV_EXTENSION = ".wav"
 
@@ -112,6 +112,49 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         return False
 
 
+def process_source_file(
+    source_file: Path,
+    raw_audio_path: Path,
+    converted_wavs_root_path: Path,
+    args,
+    summary: dict,
+    wav_files_for_transcription: list,
+    source_file_to_original_relative_path_map: dict,
+) -> None:
+    """Process a single source file: convert to 16k mono WAV if needed and update summary and lists.
+
+    This updates summary counters in-place and appends successful target WAV paths to
+    `wav_files_for_transcription`.
+    """
+    relative_to_raw = source_file.relative_to(raw_audio_path)
+    target_wav_path = (converted_wavs_root_path / relative_to_raw).with_suffix(TARGET_WAV_EXTENSION)
+
+    # Map for logging
+    source_file_to_original_relative_path_map[str(target_wav_path)] = relative_to_raw
+
+    # If target exists and we are not forcing conversion, skip
+    if target_wav_path.exists() and not args.force_convert:
+        logging.info(f"Skipping conversion, WAV already exists: {target_wav_path}")
+        summary["conversion_skipped_exists"] += 1
+        wav_files_for_transcription.append(target_wav_path)
+        return
+
+    # Otherwise, perform conversion (or simulate on dry-run)
+    if args.dry_run:
+        logging.info(f"[DRY RUN] Would convert {source_file.name} to {target_wav_path}")
+        summary["files_converted"] += 1  # Count as if it happened
+        wav_files_for_transcription.append(target_wav_path)
+        return
+
+    # Actual conversion
+    if convert_audio_to_wav_file(source_file, target_wav_path):
+        summary["files_converted"] += 1
+        wav_files_for_transcription.append(target_wav_path)
+    else:
+        logging.warning(f"Failed to convert {source_file.name}, it will be skipped for transcription.")
+        summary["conversion_failed"] += 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert audio files and transcribe them using Whisper.")
     parser.add_argument(
@@ -174,7 +217,6 @@ def main():
         "transcriptions_base_dir": None,
         "source_files_found": 0,
         "files_converted": 0,
-        "files_copied_as_wav": 0,
         "conversion_skipped_exists": 0,
         "conversion_failed": 0,
         "wav_files_for_transcription": 0,
@@ -285,48 +327,15 @@ def main():
     source_file_to_original_relative_path_map = {}  # For logging
 
     for source_file in source_files_to_process:
-        relative_to_raw = source_file.relative_to(raw_audio_path)
-        target_wav_path = (converted_wavs_root_path / relative_to_raw).with_suffix(TARGET_WAV_EXTENSION)
-
-        source_file_to_original_relative_path_map[str(target_wav_path)] = relative_to_raw
-
-        if source_file.suffix.lower() == TARGET_WAV_EXTENSION:
-            # If the source is already a WAV, decide whether to copy or use directly
-            if target_wav_path.exists() and not args.force_convert:
-                logging.info(f"Target WAV {target_wav_path} already exists (source was WAV). Skipping copy.")
-                summary["conversion_skipped_exists"] += 1
-            else:
-                if not args.dry_run:
-                    try:
-                        target_wav_path.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(source_file, target_wav_path)  # Copy if source is WAV
-                        logging.info(f"Copied source WAV {source_file.name} to {target_wav_path}")
-                        summary["files_copied_as_wav"] += 1
-                    except Exception as e:
-                        logging.error(f"Could not copy source WAV {source_file.name} to {target_wav_path}: {e}")
-                        summary["conversion_failed"] += 1
-                        continue  # Skip this file
-                else:
-                    logging.info(f"[DRY RUN] Would copy source WAV {source_file.name} to {target_wav_path}")
-                    summary["files_copied_as_wav"] += 1  # Count as if it happened for dry run summary
-            wav_files_for_transcription.append(target_wav_path)
-        else:  # Needs conversion
-            if target_wav_path.exists() and not args.force_convert:
-                logging.info(f"Skipping conversion, WAV already exists: {target_wav_path}")
-                summary["conversion_skipped_exists"] += 1
-                wav_files_for_transcription.append(target_wav_path)
-            else:
-                if not args.dry_run:
-                    if convert_audio_to_wav_file(source_file, target_wav_path):
-                        summary["files_converted"] += 1
-                        wav_files_for_transcription.append(target_wav_path)
-                    else:
-                        logging.warning(f"Failed to convert {source_file.name}, it will be skipped for transcription.")
-                        summary["conversion_failed"] += 1
-                else:
-                    logging.info(f"[DRY RUN] Would convert {source_file.name} to {target_wav_path}")
-                    summary["files_converted"] += 1  # Count as if it happened
-                    wav_files_for_transcription.append(target_wav_path)  # Assume conversion success for dry run
+        process_source_file(
+            source_file,
+            raw_audio_path,
+            converted_wavs_root_path,
+            args,
+            summary,
+            wav_files_for_transcription,
+            source_file_to_original_relative_path_map,
+        )
 
     summary["wav_files_for_transcription"] = len(wav_files_for_transcription)
     if not wav_files_for_transcription:
@@ -456,10 +465,9 @@ def main():
         logging.info(f"  Speaker diarization was enabled (HuggingFace token: {hf_token_status})")
 
     logging.info(f"Source files found in raw_audio: {summary['source_files_found']}")
-    logging.info(f"  Files converted to WAV: {summary['files_converted']}")
-    logging.info(f"  Source WAVs copied to converted_wavs: {summary['files_copied_as_wav']}")
-    logging.info(f"  Conversions/Copies skipped (target WAV existed): {summary['conversion_skipped_exists']}")
-    logging.info(f"  Conversion/Copying failed: {summary['conversion_failed']}")
+    logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")
+    logging.info(f"  Conversions skipped (target WAV existed): {summary['conversion_skipped_exists']}")
+    logging.info(f"  Conversion failed: {summary['conversion_failed']}")
 
     logging.info(f"Total WAV files prepared for transcription: {summary['wav_files_for_transcription']}")
     logging.info(f"  Transcription tasks submitted/simulated: {summary['transcriptions_submitted']}")
