@@ -12,7 +12,7 @@ import os
 import re  # Added for sanitizing folder names
 from pathlib import Path
 
-from WhisperTranscriber.transcriber import Transcriber
+from WhisperTranscriber.whispervault_transcriber import WhisperVaultTranscriber as Transcriber
 
 
 class Configuration:
