@@ -5,12 +5,22 @@ import logging
 import os  # Already imported, but making it explicit for clarity
 import shutil  # For checking ffmpeg
 import subprocess
+import sys
 from pathlib import Path
 
 from tqdm import tqdm  # Add tqdm import
 
 import WhisperTranscriber
 from WhisperTranscriber.configuration_reader import ConfigurationReader
+
+# Add scripts directory to path to import audio_chunking
+sys.path.insert(0, str(Path(__file__).parent / "scripts"))
+from audio_chunking import (  # noqa: E402
+    merge_results_for_original_files,
+    parse_duration,
+    save_chunk_map,
+    split_audio_into_chunks,
+)
 
 # --- Configuration ---
 # Default extensions for conversion (can be overridden by command line)
@@ -120,8 +130,9 @@ def process_source_file(
     summary: dict,
     wav_files_for_transcription: list,
     source_file_to_original_relative_path_map: dict,
+    chunk_map: dict,
 ) -> None:
-    """Process a single source file: convert to 16k mono WAV if needed and update summary and lists.
+    """Process a single source file: convert to 16k mono WAV, optionally chunk, and update tracking.
 
     This updates summary counters in-place and appends successful target WAV paths to
     `wav_files_for_transcription`.
@@ -142,6 +153,8 @@ def process_source_file(
     # Otherwise, perform conversion (or simulate on dry-run)
     if args.dry_run:
         logging.info(f"[DRY RUN] Would convert {source_file.name} to {target_wav_path}")
+        if args.max_chunk_duration:
+            logging.info(f"[DRY RUN] Would chunk into {args.max_chunk_duration} segments")
         summary["files_converted"] += 1  # Count as if it happened
         wav_files_for_transcription.append(target_wav_path)
         return
@@ -149,7 +162,39 @@ def process_source_file(
     # Actual conversion
     if convert_audio_to_wav_file(source_file, target_wav_path):
         summary["files_converted"] += 1
-        wav_files_for_transcription.append(target_wav_path)
+
+        # If chunking is enabled, split the converted file
+        if args.max_chunk_duration:
+            try:
+                chunk_duration_seconds = parse_duration(args.max_chunk_duration)
+                chunk_dir = target_wav_path.parent / f"{target_wav_path.stem}_chunks"
+
+                chunk_files = split_audio_into_chunks(target_wav_path, chunk_dir, chunk_duration_seconds)
+
+                # If splitting occurred, use chunks and track the mapping
+                if len(chunk_files) > 1:
+                    logging.info(f"Split {target_wav_path.name} into {len(chunk_files)} chunks")
+                    wav_files_for_transcription.extend(chunk_files)
+
+                    # Track which chunks belong to which original file
+                    # (chunks will be merged in transcriptions output directory later)
+                    chunk_map[str(target_wav_path.stem)] = {
+                        "chunks": [str(c) for c in chunk_files],
+                    }
+
+                    # Add chunks to path map for logging
+                    for chunk_file in chunk_files:
+                        source_file_to_original_relative_path_map[str(chunk_file)] = relative_to_raw
+
+                    summary["files_chunked"] = summary.get("files_chunked", 0) + 1
+                else:
+                    # No chunking needed
+                    wav_files_for_transcription.append(target_wav_path)
+            except Exception as e:
+                logging.error(f"Error chunking {target_wav_path}: {e}")
+                wav_files_for_transcription.append(target_wav_path)  # Fall back to original
+        else:
+            wav_files_for_transcription.append(target_wav_path)
     else:
         logging.warning(f"Failed to convert {source_file.name}, it will be skipped for transcription.")
         summary["conversion_failed"] += 1
@@ -177,6 +222,12 @@ def main():
         "--force-convert",
         action="store_true",
         help="Force conversion of audio files even if target WAV files already exist.",
+    )
+    parser.add_argument(
+        "--max-chunk-duration",
+        type=str,
+        default=None,
+        help="Maximum duration per audio chunk (e.g., '20m', '1h30m', '30s'). Longer files will be split.",
     )
     parser.add_argument(
         "--tag", type=str, default=None, help="Optional tag to create a subfolder within the transcriptions directory."
@@ -219,12 +270,14 @@ def main():
         "files_converted": 0,
         "conversion_skipped_exists": 0,
         "conversion_failed": 0,
+        "files_chunked": 0,
         "wav_files_for_transcription": 0,
         "transcriptions_submitted": 0,
         "transcription_errors": 0,
         "configs_to_run": 0,
         "run_description_filter": args.run_description,
         "diarization_enabled": args.enable_diarization,
+        "chunk_map_file": None,
     }
 
     if not check_ffmpeg():
@@ -325,6 +378,7 @@ def main():
     logging.info(f"Found {len(source_files_to_process)} source files for potential conversion/processing.")
 
     source_file_to_original_relative_path_map = {}  # For logging
+    chunk_map = {}  # For tracking chunked files
 
     for source_file in source_files_to_process:
         process_source_file(
@@ -335,6 +389,7 @@ def main():
             summary,
             wav_files_for_transcription,
             source_file_to_original_relative_path_map,
+            chunk_map,
         )
 
     summary["wav_files_for_transcription"] = len(wav_files_for_transcription)
@@ -444,6 +499,18 @@ def main():
                     summary["transcriptions_submitted"] += 1  # Count as if it happened
                     pbar.update(1)  # Also update progress bar for dry run tasks
 
+    # --- Post-Processing: Merge chunked results ---
+    if chunk_map:
+        chunk_map_file = transcriptions_output_base / ".chunk_map.json"
+        save_chunk_map(chunk_map_file, chunk_map)
+        summary["chunk_map_file"] = str(chunk_map_file)
+
+        try:
+            merge_results_for_original_files(transcriptions_output_base, chunk_map_file)
+            logging.info("Successfully merged chunked transcription results")
+        except Exception as e:
+            logging.error(f"Error during post-processing merge: {e}")
+
     logging.info("All processing finished.")
 
     # --- Print Summary Report ---
@@ -466,6 +533,7 @@ def main():
 
     logging.info(f"Source files found in raw_audio: {summary['source_files_found']}")
     logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")
+    logging.info(f"  Files chunked for processing: {summary.get('files_chunked', 0)}")
     logging.info(f"  Conversions skipped (target WAV existed): {summary['conversion_skipped_exists']}")
     logging.info(f"  Conversion failed: {summary['conversion_failed']}")
 
