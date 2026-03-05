@@ -9,7 +9,8 @@
             "vad": true,
             "vad_speech_threshold": 0.3,
             "repetition_penalty": 1.3,
-            "beam_size": 10
+            "beam_size": 10,
+            "diarize": true
         },
         {
             "description": "swedish_kb_whisper_large_ct2_with_vad_0.5",
@@ -20,7 +21,8 @@
             "vad": true,
             "vad_speech_threshold": 0.5,
             "repetition_penalty": 1.3,
-            "beam_size": 10
+            "beam_size": 10,
+            "diarize": true
         },
         {
             "description": "swedish_kb_whisper_large_ct2_with_no_vad",
@@ -30,7 +32,8 @@
             "condition_on_prev_text": false,
             "vad": false,
             "repetition_penalty": 1.3,
-            "beam_size": 10
+            "beam_size": 10,
+            "diarize": true
         }
     ]
 }
