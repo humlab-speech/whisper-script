@@ -97,6 +97,9 @@ class WhisperVaultTranscriber:
         "compression_ratio_threshold": "compression_ratio_threshold",
         "suppress_tokens": "suppress_tokens",
         "repetition_penalty": "repetition_penalty",
+        # Device / hardware — default is cuda; override with "device": "cpu" in config
+        "device": "device",
+        "compute_type": "compute_type",
     }
 
     # Params that exist in config files or WhisperSettings but have no
@@ -304,10 +307,34 @@ class WhisperVaultTranscriber:
     # ------------------------------------------------------------------ #
 
     @classmethod
+    def _post_reload(cls, payload: dict) -> None:
+        """POST /reload with the given payload and update cached state on success."""
+        try:
+            r = cls._http_client.post(
+                f"{cls._base_url}/reload",
+                json=payload,
+                timeout=httpx.Timeout(180.0, connect=10.0),
+            )
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(f"WhisperVault /reload timed out: {exc}") from exc
+
+        if r.status_code == 503:
+            raise RuntimeError(
+                "WhisperVault /reload returned 503 — another reload is already in progress. Wait a moment and retry."
+            )
+        r.raise_for_status()
+
+        response_data = r.json()
+        cls._cached_reload_state.update(response_data)
+        logging.info(f"WhisperVaultTranscriber: reload complete → {response_data}")
+
+    @classmethod
     def ensure_reload(cls, desired: dict) -> None:
         """
         POST /reload with only the params that differ from the cached server
         state.  Does nothing if the server is already in the desired state.
+
+        If a GPU (cuda) reload fails, automatically retries with device=cpu.
         """
         diff = {k: v for k, v in desired.items() if cls._cached_reload_state.get(k) != v}
         if not diff:
@@ -316,26 +343,15 @@ class WhisperVaultTranscriber:
 
         logging.info(f"WhisperVaultTranscriber: reloading server with diff: {diff}")
         try:
-            r = cls._http_client.post(
-                f"{cls._base_url}/reload",
-                json=diff,
-                timeout=httpx.Timeout(180.0, connect=10.0),
-            )
-        except httpx.TimeoutException as exc:
-            raise RuntimeError(f"WhisperVault /reload timed out: {exc}") from exc
-
-        if r.status_code == 503:
-            raise RuntimeError(
-                "WhisperVault /reload returned 503 — another reload is already in progress. " "Wait a moment and retry."
-            )
-        r.raise_for_status()
-
-        response_data = r.json()
-        # Cache what we sent (avoids spurious reloads for params like vad_onset
-        # that the server does not echo back) then layer the server confirmation.
-        cls._cached_reload_state.update(diff)
-        cls._cached_reload_state.update(response_data)
-        logging.info(f"WhisperVaultTranscriber: reload complete → {response_data}")
+            cls._post_reload(diff)
+        except RuntimeError as exc:
+            # GPU unavailable or OOM — fall back to CPU and retry once
+            if diff.get("device") == "cuda":
+                logging.warning(f"WhisperVaultTranscriber: GPU reload failed ({exc}), retrying with device=cpu")
+                diff["device"] = "cpu"
+                cls._post_reload(diff)
+            else:
+                raise
 
     def _build_reload_dict(
         self,
@@ -400,6 +416,8 @@ class WhisperVaultTranscriber:
             reload["compute_type"] = pkg["compute_type"]
 
         reload.update(self._resolve_vad(vad, vad_speech_threshold))
+        # Default to GPU; config file can override with "device": "cpu"
+        reload["device"] = "cuda"
 
         for config_key, reload_key in self._RELOAD_PARAM_MAP.items():
             if config_key in extra_kwargs:
