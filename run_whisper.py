@@ -2,15 +2,13 @@
 
 import argparse
 import logging
-import os  # Already imported, but making it explicit for clarity
 import shutil  # For checking ffmpeg
 import subprocess
 import sys
 from pathlib import Path
 
-from tqdm import tqdm  # Add tqdm import
-
 import WhisperTranscriber
+from tqdm import tqdm  # Add tqdm import
 from WhisperTranscriber.configuration_reader import ConfigurationReader
 
 # Add scripts directory to path to import audio_chunking
@@ -251,7 +249,7 @@ def main():
     parser.add_argument(
         "--enable-diarization",
         action="store_true",
-        help="Enable speaker diarization. Requires a HuggingFace token set in the HF_TOKEN environment variable.",
+        help="Enable speaker diarization for all files (sets diarize=true in each config).",
     )
     parser.set_defaults(recursive=True)
 
@@ -430,33 +428,16 @@ def main():
 
                 if not args.dry_run:
                     try:
-                        # Create a copy of configuration_obj.config to avoid modifying the original
-                        config_copy = configuration_obj.config.copy() if hasattr(configuration_obj, "config") else {}
-
-                        # Set diarization parameters if requested
-                        if args.enable_diarization:
-                            hf_token = os.environ.get("HF_TOKEN")
-                            if not hf_token:
-                                logging.warning(
-                                    "Diarization enabled but HF_TOKEN environment variable not set. "
-                                    "Diarization might not work correctly."
-                                )
-
-                            # Update config with diarization settings
-                            config_copy["enable_diarization"] = True
-                            if hf_token:
-                                config_copy["huggingface_token"] = hf_token
-
-                            logging.debug("Speaker diarization enabled for this transcription task.")
-
-                        # If we modified the config, create a new Configuration object
+                        # If --enable-diarization was passed, inject diarize=true into the config
                         if args.enable_diarization and hasattr(configuration_obj, "config"):
-                            from WhisperTranscriber.configuration import (  # Keep import local if only used here
-                                Configuration,
-                            )
+                            if not configuration_obj.config.get("diarize"):
+                                from WhisperTranscriber.configuration import Configuration
 
-                            modified_config_obj = Configuration(config_copy)  # Create new object with modified config
-                            transcriber_to_use = modified_config_obj
+                                config_copy = configuration_obj.config.copy()
+                                config_copy["diarize"] = True
+                                transcriber_to_use = Configuration(config_copy)
+                            else:
+                                transcriber_to_use = configuration_obj
                         else:
                             transcriber_to_use = configuration_obj
 
@@ -528,8 +509,7 @@ def main():
         logging.info(f"  (Filtered by description: '{summary['run_description_filter']}')")
 
     if summary["diarization_enabled"]:
-        hf_token_status = "available" if os.environ.get("HF_TOKEN") else "not found"
-        logging.info(f"  Speaker diarization was enabled (HuggingFace token: {hf_token_status})")
+        logging.info("  Speaker diarization was enabled via --enable-diarization")
 
     logging.info(f"Source files found in raw_audio: {summary['source_files_found']}")
     logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")

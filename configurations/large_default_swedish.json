@@ -2,8 +2,7 @@
     "run_configuration": [
         {
             "description": "swedish_kb_whisper_large_ct2_with_vad_0.3",
-            "language": "swedish",
-            "model": "kb-whisper-large-ct2",
+            "package": "sv-standard",
             "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
@@ -14,8 +13,7 @@
         },
         {
             "description": "swedish_kb_whisper_large_ct2_with_vad_0.5",
-            "language": "swedish",
-            "model": "kb-whisper-large-ct2",
+            "package": "sv-standard",
             "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": true,
@@ -26,8 +24,7 @@
         },
         {
             "description": "swedish_kb_whisper_large_ct2_with_no_vad",
-            "language": "swedish",
-            "model": "kb-whisper-large-ct2",
+            "package": "sv-standard",
             "file_format": "SRT",
             "condition_on_prev_text": false,
             "vad": false,

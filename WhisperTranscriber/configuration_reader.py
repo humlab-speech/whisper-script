@@ -1,6 +1,7 @@
 """
 A reader for whisper configuration files, to be used with the WhisperTranscriber module.
 """
+
 import importlib
 import json
 import os

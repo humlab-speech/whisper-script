@@ -1,15 +1,12 @@
 """
 WhisperVaultTranscriber — HTTP client for the WhisperVault FastAPI backend.
 
-Drop-in replacement for the Gradio-based Transcriber class.
 Talks to POST /transcribe for transcription and POST /reload to ensure the
 server is in the correct state before each configuration block is processed.
 
 Configuration:
-    WHISPERX_ENDPOINT   URL of the WhisperVault nginx sidecar, e.g.
-                        http://130.239.57.54:8088
-                        Falls back to GRADIO_WHISPERX_ENDPOINT for backwards
-                        compatibility with existing .env files.
+    WHISPERX_ENDPOINT   URL of the WhisperVault server or reverse proxy, e.g.
+                        https://whisper.example.com or http://192.168.1.50:8088
 
 Key design decision — class-level shared state:
     The httpx client, base URL and cached server state are stored as class
@@ -45,6 +42,8 @@ class WhisperVaultTranscriber:
     # Mirrors what the server currently has loaded (reload_param names → values).
     # Seeded from GET /health on first instantiation; updated after every /reload.
     _cached_reload_state: dict = {}
+    # Packages available on the server (fetched from GET /packages on startup).
+    _available_packages: dict = {}
 
     # ------------------------------------------------------------------ #
     # Translation tables                                                   #
@@ -164,12 +163,12 @@ class WhisperVaultTranscriber:
         if cls._http_client is not None:
             return
 
-        endpoint = os.getenv("WHISPERX_ENDPOINT") or os.getenv("GRADIO_WHISPERX_ENDPOINT")
+        endpoint = os.getenv("WHISPERX_ENDPOINT")
         if not endpoint:
             raise ValueError(
                 "WHISPERX_ENDPOINT environment variable not found. "
-                "Set it to your WhisperVault HTTP endpoint, "
-                "e.g.  WHISPERX_ENDPOINT=http://130.239.57.54:8088"
+                "Set it to your WhisperVault endpoint (HTTP or HTTPS), "
+                "e.g.  WHISPERX_ENDPOINT=https://whisper.example.com"
             )
 
         cls._base_url = endpoint.rstrip("/")
@@ -187,6 +186,7 @@ class WhisperVaultTranscriber:
         )
         logging.info(f"WhisperVaultTranscriber: using endpoint {cls._base_url}")
         cls._refresh_server_state()
+        cls._refresh_packages()
 
     @classmethod
     def _refresh_server_state(cls) -> None:
@@ -213,12 +213,34 @@ class WhisperVaultTranscriber:
             "compute_type": "compute_type",
             "language": "language",
             "vad_method": "vad_method",
+            "align_model": "align_model",
+            "diarize_model": "diarize_model",
         }
         for health_key, reload_key in HEALTH_TO_RELOAD.items():
             if health_key in health:
                 cls._cached_reload_state[reload_key] = health[health_key]
 
         logging.info(f"WhisperVaultTranscriber: server state refreshed → {cls._cached_reload_state}")
+
+    @classmethod
+    def _refresh_packages(cls) -> None:
+        """Fetch available model packages from GET /packages and cache locally."""
+        try:
+            r = cls._http_client.get(f"{cls._base_url}/packages", timeout=10)
+            if r.status_code == 404:
+                # Server does not yet support the /packages endpoint
+                cls._available_packages = {}
+                return
+            r.raise_for_status()
+            cls._available_packages = r.json().get("packages", {})
+            logging.info(
+                "WhisperVaultTranscriber: %d package(s) available: %s",
+                len(cls._available_packages),
+                list(cls._available_packages),
+            )
+        except Exception as exc:
+            logging.warning("WhisperVaultTranscriber: could not fetch /packages: %s", exc)
+            cls._available_packages = {}
 
     # ------------------------------------------------------------------ #
     # Translation helpers                                                  #
@@ -309,6 +331,9 @@ class WhisperVaultTranscriber:
         r.raise_for_status()
 
         response_data = r.json()
+        # Cache what we sent (avoids spurious reloads for params like vad_onset
+        # that the server does not echo back) then layer the server confirmation.
+        cls._cached_reload_state.update(diff)
         cls._cached_reload_state.update(response_data)
         logging.info(f"WhisperVaultTranscriber: reload complete → {response_data}")
 
@@ -323,12 +348,57 @@ class WhisperVaultTranscriber:
         """
         Build the complete desired-server-state dict for ensure_reload().
 
-        Includes model, language (as ISO code), VAD onset and every kwargs
+        If ``extra_kwargs`` contains a ``"package"`` key the named package is
+        resolved from the server's package registry and its fields (model,
+        align_model, diarize_model, language, compute_type) are used as
+        defaults.  Fields explicitly passed via ``model`` / ``language`` args
+        or other ``extra_kwargs`` entries override the package values.
+
+        Includes model, language (as ISO code), VAD onset, and every kwargs
         key that maps to a reload_param.
         """
-        reload = {}
-        reload["model"] = self._resolve_model(model)
-        reload["language"] = self._resolve_language(language)
+        reload: dict = {}
+
+        # Package expansion: resolve named bundle → individual model fields.
+        package_name = extra_kwargs.get("package")
+        pkg: dict = {}
+        if package_name:
+            pkg = self._available_packages.get(package_name, {})
+            if not pkg:
+                logging.warning(
+                    "WhisperVaultTranscriber: package '%s' not found in server registry "
+                    "(available: %s); falling back to explicit model/language args.",
+                    package_name,
+                    list(self._available_packages),
+                )
+
+        # Model: package default → caller arg.
+        # model may be None when the config file uses 'package' instead of 'model'.
+        raw_model = pkg.get("model") or model
+        if raw_model:
+            reload["model"] = self._resolve_model(raw_model)
+        else:
+            logging.warning(
+                "WhisperVaultTranscriber: no model specified (no 'package' or 'model' key); "
+                "current server model will be kept."
+            )
+
+        # Language: package default → caller arg.
+        raw_lang = pkg.get("language") or language
+        reload["language"] = self._resolve_language(raw_lang)
+
+        # align_model / diarize_model: included when package declares them.
+        # Passing None explicitly clears any previously configured override
+        # (e.g. switching from a Swedish package to an English one).
+        if "align_model" in pkg:
+            reload["align_model"] = pkg["align_model"]
+        if "diarize_model" in pkg:
+            reload["diarize_model"] = pkg["diarize_model"]
+
+        # compute_type: package default if present.
+        if "compute_type" in pkg:
+            reload["compute_type"] = pkg["compute_type"]
+
         reload.update(self._resolve_vad(vad, vad_speech_threshold))
 
         for config_key, reload_key in self._RELOAD_PARAM_MAP.items():
@@ -422,6 +492,7 @@ class WhisperVaultTranscriber:
                     "diarize",
                     "min_speakers",
                     "max_speakers",
+                    "package",
                 )
             ):
                 logging.debug(f"WhisperVaultTranscriber: unknown kwarg '{key}' will be ignored.")

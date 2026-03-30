@@ -209,7 +209,9 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,  # Show defaults in help
     )
     parser.add_argument(
-        "input", type=Path, help="Input file or directory containing source files."  # Use Path object directly
+        "input",
+        type=Path,
+        help="Input file or directory containing source files.",  # Use Path object directly
     )
     parser.add_argument(
         "--extensions",
