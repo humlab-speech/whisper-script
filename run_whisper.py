@@ -7,8 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import WhisperTranscriber
 from tqdm import tqdm  # Add tqdm import
+
+import WhisperTranscriber
 from WhisperTranscriber.configuration_reader import ConfigurationReader
 
 # Add scripts directory to path to import audio_chunking
@@ -30,6 +31,12 @@ TARGET_WAV_EXTENSION = ".wav"
 RAW_AUDIO_DIR_NAME = "raw_audio"
 CONVERTED_WAVS_DIR_NAME = "converted_wavs"
 TRANSCRIPTIONS_DIR_NAME = "transcriptions"
+
+# ANSI colors for terminal-friendly success/fail output
+ANSI_RED = "\033[31m"
+ANSI_GREEN = "\033[32m"
+ANSI_YELLOW = "\033[33m"
+ANSI_RESET = "\033[0m"
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -515,11 +522,30 @@ def main():
     logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")
     logging.info(f"  Files chunked for processing: {summary.get('files_chunked', 0)}")
     logging.info(f"  Conversions skipped (target WAV existed): {summary['conversion_skipped_exists']}")
-    logging.info(f"  Conversion failed: {summary['conversion_failed']}")
+
+    if summary["conversion_failed"] > 0:
+        logging.error(
+            f"  Conversion failed: {ANSI_RED}{summary['conversion_failed']}{ANSI_RESET} " f"(attention needed)"
+        )
+    else:
+        logging.info(f"  Conversion failed: {ANSI_GREEN}{summary['conversion_failed']}{ANSI_RESET}")
 
     logging.info(f"Total WAV files prepared for transcription: {summary['wav_files_for_transcription']}")
     logging.info(f"  Transcription tasks submitted/simulated: {summary['transcriptions_submitted']}")
-    logging.info(f"  Transcription errors encountered: {summary['transcription_errors']}")
+
+    if summary["transcription_errors"] > 0:
+        logging.error(
+            f"  Transcription errors encountered: {ANSI_RED}{summary['transcription_errors']}{ANSI_RESET} "
+            f"(attention needed)"
+        )
+    else:
+        logging.info(f"  Transcription errors encountered: {ANSI_GREEN}{summary['transcription_errors']}{ANSI_RESET}")
+
+    if summary["conversion_failed"] > 0 or summary["transcription_errors"] > 0:
+        logging.error(f"{ANSI_RED}RUN STATUS: FAILED (see above error counts){ANSI_RESET}")
+    else:
+        logging.info(f"{ANSI_GREEN}RUN STATUS: SUCCESS{ANSI_RESET}")
+
     logging.info("--- End of Summary ---")
 
 

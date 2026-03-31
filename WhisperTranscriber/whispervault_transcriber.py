@@ -564,6 +564,14 @@ class WhisperVaultTranscriber:
                 "Refreshing server state cache."
             )
             self._refresh_server_state()
+            if response.status_code == 504:
+                raise RuntimeError(
+                    f"Gateway timeout (504) transcribing '{Path(file_name).name}'. "
+                    "The nginx proxy cut the connection before the server finished — "
+                    "the audio is probably too long. "
+                    "Re-run with --max-chunk-duration (e.g. --max-chunk-duration 10m) "
+                    "to split the file into shorter segments."
+                )
             response.raise_for_status()
 
         result = response.json()

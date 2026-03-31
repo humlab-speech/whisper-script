@@ -40,6 +40,11 @@ The endpoint should point to the WhisperVault nginx sidecar or any reverse
 proxy in front of the WhisperVault Unix socket.  Both HTTP and HTTPS are
 supported; basic auth credentials are sent automatically when configured.
 
+> **nginx reverse proxy note:** if WhisperVault sits behind nginx (e.g. nginx
+> proxy manager), add `proxy_read_timeout 30m;` to the proxy host's custom
+> nginx configuration.  The default 60 s timeout is too short for long audio
+> files or runs with speaker diarization enabled.
+
 ## Project directory structure
 
 The script expects a project directory with the following layout:
