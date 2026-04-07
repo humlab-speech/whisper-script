@@ -258,6 +258,11 @@ def main():
         action="store_true",
         help="Enable speaker diarization for all files (sets diarize=true in each config).",
     )
+    parser.add_argument(
+        "--no-diarize",
+        action="store_true",
+        help="Disable speaker diarization even if the configuration specifies diarize=true.",
+    )
     parser.set_defaults(recursive=True)
 
     args = parser.parse_args()
@@ -282,6 +287,7 @@ def main():
         "configs_to_run": 0,
         "run_description_filter": args.run_description,
         "diarization_enabled": args.enable_diarization,
+        "diarization_disabled": args.no_diarize,
         "chunk_map_file": None,
     }
 
@@ -435,16 +441,16 @@ def main():
 
                 if not args.dry_run:
                     try:
-                        # If --enable-diarization was passed, inject diarize=true into the config
-                        if args.enable_diarization and hasattr(configuration_obj, "config"):
-                            if not configuration_obj.config.get("diarize"):
-                                from WhisperTranscriber.configuration import Configuration
+                        # Apply --enable-diarization / --no-diarize overrides
+                        if (args.enable_diarization or args.no_diarize) and hasattr(configuration_obj, "config"):
+                            from WhisperTranscriber.configuration import Configuration
 
-                                config_copy = configuration_obj.config.copy()
+                            config_copy = configuration_obj.config.copy()
+                            if args.no_diarize:
+                                config_copy["diarize"] = False
+                            elif args.enable_diarization:
                                 config_copy["diarize"] = True
-                                transcriber_to_use = Configuration(config_copy)
-                            else:
-                                transcriber_to_use = configuration_obj
+                            transcriber_to_use = Configuration(config_copy)
                         else:
                             transcriber_to_use = configuration_obj
 
@@ -480,6 +486,8 @@ def main():
                     logging.info(f"[DRY RUN]   Output would be in a structure under: {output_structure_path}")
                     if args.enable_diarization:
                         logging.info("[DRY RUN]   Speaker diarization would be enabled")
+                    if args.no_diarize:
+                        logging.info("[DRY RUN]   Speaker diarization would be disabled (--no-diarize)")
                     if not args.no_config_logs:
                         logging.info("[DRY RUN]   Would create config log file in the output directory")
                     else:
@@ -517,6 +525,8 @@ def main():
 
     if summary["diarization_enabled"]:
         logging.info("  Speaker diarization was enabled via --enable-diarization")
+    if summary["diarization_disabled"]:
+        logging.info("  Speaker diarization was force-disabled via --no-diarize")
 
     logging.info(f"Source files found in raw_audio: {summary['source_files_found']}")
     logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")
