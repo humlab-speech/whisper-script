@@ -18,11 +18,20 @@ Key design decision — class-level shared state:
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
+
+# Matches [SPEAKER_00]:  (with the optional trailing space)
+_SPEAKER_RE = re.compile(r"\[SPEAKER_\d+\]:\s?")
+
+
+def strip_speakers(text: str) -> str:
+    """Remove all ``[SPEAKER_XX]: `` tags from *text*."""
+    return _SPEAKER_RE.sub("", text)
 
 
 class WhisperVaultTranscriber:
@@ -511,6 +520,7 @@ class WhisperVaultTranscriber:
                     "min_speakers",
                     "max_speakers",
                     "package",
+                    "strip_speakers",
                 )
             ):
                 logging.debug(f"WhisperVaultTranscriber: unknown kwarg '{key}' will be ignored.")
@@ -592,11 +602,19 @@ class WhisperVaultTranscriber:
         os.makedirs(save_dir, exist_ok=True)
 
         stem = original_filename or audio_path.stem
+        do_strip = bool(kwargs.get("strip_speakers", False))
         for fmt, content in outputs.items():
             out_path = os.path.join(save_dir, f"{stem}.{fmt}")
             with open(out_path, "w", encoding="utf-8") as fh:
                 fh.write(content)
             logging.info(f"WhisperVaultTranscriber: saved {out_path}")
+
+            # Write a speaker-stripped variant alongside the original
+            if do_strip and fmt in ("srt", "txt", "vtt") and _SPEAKER_RE.search(content):
+                stripped_path = os.path.join(save_dir, f"{stem}.no_speakers.{fmt}")
+                with open(stripped_path, "w", encoding="utf-8") as fh:
+                    fh.write(strip_speakers(content))
+                logging.info(f"WhisperVaultTranscriber: saved {stripped_path} (speakers stripped)")
 
     # ------------------------------------------------------------------ #
     # Utility / diagnostic methods                                         #

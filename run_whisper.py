@@ -263,6 +263,11 @@ def main():
         action="store_true",
         help="Disable speaker diarization even if the configuration specifies diarize=true.",
     )
+    parser.add_argument(
+        "--strip-speakers",
+        action="store_true",
+        help="Also write .no_speakers.{srt,txt,vtt} variants without [SPEAKER_XX] tags.",
+    )
     parser.set_defaults(recursive=True)
 
     args = parser.parse_args()
@@ -288,6 +293,7 @@ def main():
         "run_description_filter": args.run_description,
         "diarization_enabled": args.enable_diarization,
         "diarization_disabled": args.no_diarize,
+        "strip_speakers": args.strip_speakers,
         "chunk_map_file": None,
     }
 
@@ -441,8 +447,11 @@ def main():
 
                 if not args.dry_run:
                     try:
-                        # Apply --enable-diarization / --no-diarize overrides
-                        if (args.enable_diarization or args.no_diarize) and hasattr(configuration_obj, "config"):
+                        # Apply CLI overrides (diarization, speaker stripping)
+                        needs_override = (
+                            args.enable_diarization or args.no_diarize or args.strip_speakers
+                        ) and hasattr(configuration_obj, "config")
+                        if needs_override:
                             from WhisperTranscriber.configuration import Configuration
 
                             config_copy = configuration_obj.config.copy()
@@ -450,6 +459,8 @@ def main():
                                 config_copy["diarize"] = False
                             elif args.enable_diarization:
                                 config_copy["diarize"] = True
+                            if args.strip_speakers:
+                                config_copy["strip_speakers"] = True
                             transcriber_to_use = Configuration(config_copy)
                         else:
                             transcriber_to_use = configuration_obj
@@ -488,6 +499,8 @@ def main():
                         logging.info("[DRY RUN]   Speaker diarization would be enabled")
                     if args.no_diarize:
                         logging.info("[DRY RUN]   Speaker diarization would be disabled (--no-diarize)")
+                    if args.strip_speakers:
+                        logging.info("[DRY RUN]   Speaker labels would be stripped (.no_speakers variants)")
                     if not args.no_config_logs:
                         logging.info("[DRY RUN]   Would create config log file in the output directory")
                     else:
@@ -527,6 +540,8 @@ def main():
         logging.info("  Speaker diarization was enabled via --enable-diarization")
     if summary["diarization_disabled"]:
         logging.info("  Speaker diarization was force-disabled via --no-diarize")
+    if summary["strip_speakers"]:
+        logging.info("  Speaker labels were stripped (.no_speakers variants written)")
 
     logging.info(f"Source files found in raw_audio: {summary['source_files_found']}")
     logging.info(f"  Files converted to 16kHz mono WAV: {summary['files_converted']}")
