@@ -6,6 +6,7 @@ output/*
 *.srt
 demo/*
 __pycache__*
+.venv
 venv
 Transcriptions/*
 configurations/*.json

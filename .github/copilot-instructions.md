@@ -144,14 +144,14 @@ Copy `.env.example` to `.env` and fill in the values. Never commit `.env`.
 
 ### Pre-commit
 
-The venv lives at `./venv/` — activate it before any Python work:
+The venv lives at `./.venv/` — activate it before any Python work:
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 Hooks: `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`,
-`check-toml`, `debug-statements`, `black` (line length 120), `isort`, `flake8`.
+`check-toml`, `debug-statements`, `mixed-line-ending`, `ruff` (linter + formatter, line length 120).
 
 **Always run pre-commit before committing, and after making code changes:**
 
@@ -165,6 +165,10 @@ If pre-commit is not yet installed in the venv:
 pip install pre-commit
 pre-commit install
 ```
+
+Agents (including Copilot) must always call `configure_python_environment` at the
+start of a session or before any Python-related operation; this ensures the correct
+venv is used.
 
 Agents must run `pre-commit run --all-files` after any code edit and fix all
 failures before considering a task complete.

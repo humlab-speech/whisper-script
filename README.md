@@ -17,8 +17,8 @@ every file — preserving the original directory structure in the output.
   the nginx sidecar, or remotely behind a reverse proxy with HTTPS + basic auth)
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
