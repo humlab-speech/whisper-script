@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import datetime
 import logging
+import re
 import shutil  # For checking ffmpeg
 import subprocess
 import sys
@@ -205,6 +207,31 @@ def process_source_file(
         summary["conversion_failed"] += 1
 
 
+def _sanitize_foldername(name: str) -> str:
+    """Mirror of Configuration._sanitize_foldername for skip-existing checks."""
+    if not name:
+        return "unnamed_configuration"
+    s = re.sub(r"\s+", "_", str(name))
+    s = re.sub(r"[^a-zA-Z0-9_-]", "", s)
+    return s[:200] or "sanitized_empty_name"
+
+
+def _output_exists(transcriptions_base: Path, config: dict, wav_stem: str, relative_subdir: Path) -> bool:
+    """
+    Return True if any output file already exists for this wav_stem + config combination.
+    Checks today's date folder (same date the re-run would use).
+    """
+    description = config.get("description")
+    model = config.get("model")
+    folder_name = _sanitize_foldername(description if description else model)
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    parts = [transcriptions_base, date_str, folder_name]
+    if str(relative_subdir) != ".":
+        parts.append(relative_subdir)
+    expected_dir = Path(*[str(p) for p in parts])
+    return any(expected_dir.glob(f"{wav_stem}.*"))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert audio files and transcribe them using Whisper.")
     parser.add_argument(
@@ -252,6 +279,12 @@ def main():
         "--no-config-logs",
         action="store_true",
         help="Disable creation of configuration log files in the output directory.",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip transcription if any output file for this file+config already exists "
+        "(useful for retrying failed runs).",
     )
     parser.add_argument(
         "--enable-diarization",
@@ -446,6 +479,18 @@ def main():
                 logging.debug(f"  Original source relative path (for logging): {original_relative_path_for_log}")
 
                 if not args.dry_run:
+                    if args.skip_existing and _output_exists(
+                        transcriptions_output_base,
+                        configuration_obj.config,
+                        wav_file_to_transcribe.stem,
+                        relative_dir_for_transcription,
+                    ):
+                        logging.info(
+                            f"Skipping (output exists): {wav_file_to_transcribe.name} " f"with config '{config_desc}'"
+                        )
+                        pbar.update(1)
+                        continue
+
                     try:
                         # Apply CLI overrides (diarization, speaker stripping)
                         needs_override = (
