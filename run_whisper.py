@@ -22,7 +22,7 @@ from audio_chunking import (  # noqa: E402
     save_chunk_map,
     split_audio_into_chunks,
 )
-from junk_filter import is_junk_dir, is_junk_file  # noqa: E402
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_file, is_junk_path  # noqa: E402
 
 # --- Configuration ---
 # Default extensions for conversion (can be overridden by command line)
@@ -79,17 +79,17 @@ def find_convertible_files(scan_directory: Path, target_extensions: tuple, recur
 
     skipped_junk = 0
     for item in iterator:
-        if item.is_file():
-            parts = item.relative_to(scan_directory).parts
-            if any(is_junk_dir(part) for part in parts[:-1]) or is_junk_file(parts[-1]):
+        if item.is_file() and item.suffix.lower() in normalized_extensions:
+            if is_junk_path(item, scan_directory):
                 skipped_junk += 1
-                logging.debug(f"Skipping system/junk path: {item}")
+                logging.debug(f"Skipping system/junk audio file: {item}")
                 continue
-            if item.suffix.lower() in normalized_extensions:
-                found_files.append(item)
+            found_files.append(item)
 
+    # Only audio-shaped entries are tallied on either side, so
+    # "Found N" + "Skipped M" explains the audio files the scan actually saw.
     if skipped_junk:
-        logging.info(f"Skipped {skipped_junk} system/junk file(s) (AppleDouble, dot-files, lock files).")
+        logging.info(JUNK_SKIPPED_MSG.format(count=skipped_junk))
 
     logging.info(f"Found {len(found_files)} files matching extensions.")
     return found_files
@@ -130,17 +130,15 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         )
 
         if process.returncode != 0:
-            stderr_text = process.stderr.decode("utf-8", errors="ignore")
-            last_line = stderr_text.strip().splitlines()[-1] if stderr_text.strip() else "no stderr"
+            stderr_text = process.stderr.decode("utf-8", errors="ignore").strip()
             if is_junk_file(source_file.name) and any(pattern in stderr_text for pattern in JUNK_FFMPEG_PATTERNS):
+                # A pattern match means stderr is non-empty, so the last line exists.
                 logging.warning(
                     f"Skipped '{source_file}' (system metadata/junk file, not a real audio stream; "
-                    f"rc={process.returncode}): {last_line}"
+                    f"rc={process.returncode}): {stderr_text.splitlines()[-1]}"
                 )
             else:
-                logging.error(
-                    f"FFmpeg error converting {source_file}. Return code: {process.returncode}",
-                )
+                logging.error(f"FFmpeg error converting {source_file}. Return code: {process.returncode}")
                 logging.error(f"FFmpeg stderr: {stderr_text}")
             if target_wav_file.exists():  # Clean up partially created file
                 try:

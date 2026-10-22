@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-from junk_filter import is_junk_dir, is_junk_file
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_dir, is_junk_file
 from tqdm import tqdm  # For the progress bar
 
 
@@ -105,16 +105,20 @@ def scan_and_process_files(folder_path, file_extension):
     tqdm.write("Scanning for files...")
     skipped_junk = 0
     for root, dirs, files in os.walk(abs_folder_path):
+        # A pruned junk directory counts as one skipped item.
+        skipped_junk += sum(1 for d in dirs if is_junk_dir(d))
         dirs[:] = [d for d in dirs if not is_junk_dir(d)]
         for filename in files:
+            matches_extension = filename.lower().endswith(file_extension)
             if is_junk_file(filename):
-                skipped_junk += 1
+                if matches_extension:  # only audio-shaped junk is worth a tally
+                    skipped_junk += 1
                 continue
-            if filename.lower().endswith(file_extension):
+            if matches_extension:
                 filepaths_to_process.append(os.path.join(root, filename))
 
     if skipped_junk:
-        tqdm.write(f"Skipped {skipped_junk} system/junk file(s) (AppleDouble, dot-files, lock files).")
+        tqdm.write(JUNK_SKIPPED_MSG.format(count=skipped_junk))
 
     if not filepaths_to_process:
         tqdm.write(f"No files found with extension '{file_extension}'.")

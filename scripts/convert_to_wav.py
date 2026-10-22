@@ -17,7 +17,7 @@ except ImportError:
     print("Please install it using: pip install tqdm")
     sys.exit(1)
 
-from junk_filter import is_junk_dir, is_junk_file
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_dir, is_junk_file
 
 # --- Configuration ---
 # Set up logging
@@ -94,7 +94,9 @@ def find_files_to_convert(
             current_dir = Path(root)
             current_dir_abs = current_dir.resolve()
 
-            # Never descend into OS metadata directories (.Trashes, .Spotlight-V100, ._*, ...)
+            # Never descend into OS metadata directories (.Trashes, .Spotlight-V100, ._*, ...);
+            # the pruned directory itself counts as the skipped item.
+            skipped_junk += sum(1 for d in dirs if is_junk_dir(d))
             dirs[:] = [d for d in dirs if not is_junk_dir(d)]
 
             # --- Crucial Check: Prevent descending into the output directory ---
@@ -117,14 +119,17 @@ def find_files_to_convert(
                 continue  # Don't process files *in* the output directory
 
             for file in files:
-                if is_junk_file(file):
-                    skipped_junk += 1
-                    continue
                 input_file = current_dir / file
                 file_suffix = input_file.suffix
                 suffix_to_check = file_suffix if case_sensitive else file_suffix.lower()
+                matches_extension = suffix_to_check in extensions_to_match
 
-                if suffix_to_check in extensions_to_match:
+                if is_junk_file(file):
+                    if matches_extension:  # only audio-shaped junk is worth a tally
+                        skipped_junk += 1
+                    continue
+
+                if matches_extension:
                     # Calculate relative path from input_dir base
                     relative_path = input_file.parent.relative_to(input_path_abs)
                     # Construct output subdirectory path
@@ -134,7 +139,7 @@ def find_files_to_convert(
                     files_to_process.append((input_file, output_file))
 
         if skipped_junk:
-            logging.info(f"Skipped {skipped_junk} system/junk file(s) (AppleDouble, dot-files, lock files).")
+            logging.info(JUNK_SKIPPED_MSG.format(count=skipped_junk))
     else:
         logging.error(f"Input path '{input_path}' is not a valid file or directory.")
         # No files to process, return empty list
@@ -168,6 +173,9 @@ def convert_file(input_file: Path, output_file: Path) -> bool:
         subprocess.run(
             [
                 "ffmpeg",
+                "-hide_banner",  # Keep the version banner out of the log
+                "-loglevel",
+                "error",  # Before -i: only report errors, also for input-open failures
                 "-i",
                 str(input_file),  # Input file
                 "-acodec",
@@ -177,8 +185,6 @@ def convert_file(input_file: Path, output_file: Path) -> bool:
                 "-ar",
                 "16000",  # Audio sample rate: 16000 Hz
                 "-vn",  # No video
-                "-loglevel",
-                "error",  # Suppress verbose ffmpeg output, only show errors
                 "-y",  # Overwrite output without asking (we check existence above)
                 str(output_file),  # Output file
             ],
