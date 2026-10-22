@@ -53,8 +53,24 @@ def check_ffmpeg() -> bool:
     return True
 
 
+def is_junk_file(name: str) -> bool:
+    """Return True for macOS AppleDouble (._*, .__*), any other dot-file (incl. .DS_Store)
+    and Windows Office temp/lock files (~$*)."""
+    return name.startswith(".") or name.startswith("~$")
+
+
+# FFmpeg stderr fragments that mark a file as unreadable junk (AppleDouble shells,
+# truncated metadata stubs) rather than a real conversion failure worth an ERROR log.
+JUNK_FFMPEG_PATTERNS = (
+    "misdetection possible",
+    "Could not seek to",
+    "Invalid data found when processing input",
+    "Invalid argument",
+)
+
+
 def find_convertible_files(scan_directory: Path, target_extensions: tuple, recursive: bool) -> list[Path]:
-    """Finds files matching target_extensions in scan_directory."""
+    """Finds files matching target_extensions in scan_directory, skipping system junk."""
     found_files = []
     normalized_extensions = tuple(ext.lower() for ext in target_extensions)
 
@@ -68,6 +84,9 @@ def find_convertible_files(scan_directory: Path, target_extensions: tuple, recur
 
     for item in iterator:
         if item.is_file():
+            if any(is_junk_file(part) for part in item.relative_to(scan_directory).parts):
+                logging.debug(f"Skipping system/junk path: {item}")
+                continue
             if item.suffix.lower() in normalized_extensions:
                 found_files.append(item)
 
@@ -87,6 +106,9 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         process = subprocess.run(
             [
                 "ffmpeg",
+                "-hide_banner",  # Drop the multi-line version/config dump from logs
+                "-loglevel",
+                "error",  # Only emit actual errors, not info lines
                 "-i",
                 str(source_file),
                 "-acodec",
@@ -107,8 +129,15 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         )
 
         if process.returncode != 0:
-            logging.error(f"FFmpeg error converting {source_file.name}. Return code: {process.returncode}")
-            logging.error(f"FFmpeg stderr: {process.stderr.decode('utf-8', errors='ignore')}")
+            stderr_text = process.stderr.decode("utf-8", errors="ignore")
+            if any(pattern in stderr_text for pattern in JUNK_FFMPEG_PATTERNS):
+                logging.warning(
+                    f"Skipped '{source_file.name}' (not a valid audio stream, likely metadata/junk): "
+                    f"{stderr_text.strip().splitlines()[-1] if stderr_text.strip() else 'no stderr'}"
+                )
+            else:
+                logging.error(f"FFmpeg error converting {source_file.name}. Return code: {process.returncode}")
+                logging.error(f"FFmpeg stderr: {stderr_text}")
             if target_wav_file.exists():  # Clean up partially created file
                 try:
                     target_wav_file.unlink()
