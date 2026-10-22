@@ -31,6 +31,8 @@ configurations/                 JSON config files (one or more run_configuration
 scripts/
   audio_chunking.py             Split long audio into chunks and merge results
   convert_to_wav.py             Standalone ffmpeg wrapper
+  junk_filter.py                Shared system-junk filter (AppleDouble ._*, .DS_Store, ~$*, trash dirs) — every file scanner must use it
+  strip_speakers.py             Remove [SPEAKER_XX] tags from .srt/.txt/.vtt
   srt_to_txt.py                 SRT → plain text conversion
   scan_folder_for_audio.py      Utility to list audio files
   normalize_volume.sh           Shell helper for volume normalisation
@@ -231,3 +233,9 @@ print(r.json())
 - Do not skip `pre-commit run --all-files` before committing
 - Do not use `requests` — use `httpx`
 - Do not hardcode the WhisperVault endpoint URL in source files — read from env
+- Do not hand-roll a file scan: `glob`/`rglob`/`find -name` **do** match dot-files, so
+  every enumeration must filter through `scripts/junk_filter.py` (`is_junk_path` for
+  recursive scans, `is_junk_file`/`is_junk_dir` for walks) or macOS `._foo.mp3`
+  AppleDouble twins get converted as audio. One exception: `convert_folder_srt.sh`
+  prunes *every* dot-path (find cannot read the deny-list), so it also drops unknown
+  hidden dirs — see the comment in that script.

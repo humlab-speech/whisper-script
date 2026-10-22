@@ -17,6 +17,8 @@ except ImportError:
     print("Please install it using: pip install tqdm")
     sys.exit(1)
 
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_dir, is_junk_file
+
 # --- Configuration ---
 # Set up logging
 logging.basicConfig(
@@ -86,10 +88,16 @@ def find_files_to_convert(
     elif input_path_abs.is_dir():
         # Handle directory input
         output_dir_relative_name = output_dir_abs.name  # Needed for os.walk check
+        skipped_junk = 0
 
         for root, dirs, files in os.walk(input_path_abs, topdown=True):
             current_dir = Path(root)
             current_dir_abs = current_dir.resolve()
+
+            # Never descend into OS metadata directories (.Trashes, .Spotlight-V100, ._*, ...);
+            # the pruned directory itself counts as the skipped item.
+            skipped_junk += sum(1 for d in dirs if is_junk_dir(d))
+            dirs[:] = [d for d in dirs if not is_junk_dir(d)]
 
             # --- Crucial Check: Prevent descending into the output directory ---
             # Check if the resolved output directory is EXACTLY one of the subdirectories
@@ -114,8 +122,14 @@ def find_files_to_convert(
                 input_file = current_dir / file
                 file_suffix = input_file.suffix
                 suffix_to_check = file_suffix if case_sensitive else file_suffix.lower()
+                matches_extension = suffix_to_check in extensions_to_match
 
-                if suffix_to_check in extensions_to_match:
+                if is_junk_file(file):
+                    if matches_extension:  # only audio-shaped junk is worth a tally
+                        skipped_junk += 1
+                    continue
+
+                if matches_extension:
                     # Calculate relative path from input_dir base
                     relative_path = input_file.parent.relative_to(input_path_abs)
                     # Construct output subdirectory path
@@ -123,6 +137,9 @@ def find_files_to_convert(
                     # Construct final output file path
                     output_file = output_subdir / f"{input_file.stem}.wav"
                     files_to_process.append((input_file, output_file))
+
+        if skipped_junk:
+            logging.info(JUNK_SKIPPED_MSG.format(count=skipped_junk))
     else:
         logging.error(f"Input path '{input_path}' is not a valid file or directory.")
         # No files to process, return empty list
@@ -156,6 +173,9 @@ def convert_file(input_file: Path, output_file: Path) -> bool:
         subprocess.run(
             [
                 "ffmpeg",
+                "-hide_banner",  # Keep the version banner out of the log
+                "-loglevel",
+                "error",  # Before -i: only report errors, also for input-open failures
                 "-i",
                 str(input_file),  # Input file
                 "-acodec",
@@ -165,8 +185,6 @@ def convert_file(input_file: Path, output_file: Path) -> bool:
                 "-ar",
                 "16000",  # Audio sample rate: 16000 Hz
                 "-vn",  # No video
-                "-loglevel",
-                "error",  # Suppress verbose ffmpeg output, only show errors
                 "-y",  # Overwrite output without asking (we check existence above)
                 str(output_file),  # Output file
             ],

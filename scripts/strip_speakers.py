@@ -19,6 +19,8 @@ import re
 import sys
 from pathlib import Path
 
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_file, is_junk_path
+
 # Matches [SPEAKER_00]:  (with the optional trailing space)
 _SPEAKER_RE = re.compile(r"\[SPEAKER_\d+\]:\s?")
 _EXTENSIONS = {".srt", ".txt", ".vtt"}
@@ -46,17 +48,31 @@ def _write_stripped(src: Path, dest_dir: Path) -> Path | None:
 def _collect_targets(paths: list[str]) -> list[Path]:
     """Expand a mix of files and directories into a flat list of targets."""
     targets: list[Path] = []
+    skipped_junk = 0
     for p in paths:
         path = Path(p)
         if path.is_dir():
             for ext in sorted(_EXTENSIONS):
-                targets.extend(sorted(path.rglob(f"*{ext}")))
+                for found in sorted(path.rglob(f"*{ext}")):
+                    if is_junk_path(found, path):
+                        skipped_junk += 1
+                        continue
+                    targets.append(found)
         elif path.is_file():
             targets.append(path)
         else:
             print(f"Not found: {path}", file=sys.stderr)
-    # Exclude files that are already stripped variants
-    return [t for t in targets if ".no_speakers" not in t.stem]
+    # Drop already-stripped variants, and junk named explicitly on the command
+    # line too: a binary AppleDouble ._x.srt would abort the batch in read_text().
+    kept: list[Path] = []
+    for target in targets:
+        if is_junk_file(target.name):
+            skipped_junk += 1
+        elif ".no_speakers" not in target.stem:
+            kept.append(target)
+    if skipped_junk:
+        print(JUNK_SKIPPED_MSG.format(count=skipped_junk), file=sys.stderr)
+    return kept
 
 
 def main() -> None:

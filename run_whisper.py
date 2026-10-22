@@ -22,6 +22,7 @@ from audio_chunking import (  # noqa: E402
     save_chunk_map,
     split_audio_into_chunks,
 )
+from junk_filter import JUNK_SKIPPED_MSG, is_junk_file, is_junk_path  # noqa: E402
 
 # --- Configuration ---
 # Default extensions for conversion (can be overridden by command line)
@@ -53,8 +54,18 @@ def check_ffmpeg() -> bool:
     return True
 
 
+# FFmpeg error-level stderr fragments that mark a file as unreadable metadata/junk.
+# Only error-level phrases: the conversion runs with -loglevel error, so
+# warning-level noise like "misdetection possible" never reaches us.
+JUNK_FFMPEG_PATTERNS = (
+    "Invalid data found when processing input",
+    "Could not seek to",
+    "Invalid argument",
+)
+
+
 def find_convertible_files(scan_directory: Path, target_extensions: tuple, recursive: bool) -> list[Path]:
-    """Finds files matching target_extensions in scan_directory."""
+    """Finds files matching target_extensions in scan_directory, skipping system junk."""
     found_files = []
     normalized_extensions = tuple(ext.lower() for ext in target_extensions)
 
@@ -66,10 +77,19 @@ def find_convertible_files(scan_directory: Path, target_extensions: tuple, recur
 
     iterator = scan_directory.rglob("*") if recursive else scan_directory.glob("*")
 
+    skipped_junk = 0
     for item in iterator:
-        if item.is_file():
-            if item.suffix.lower() in normalized_extensions:
-                found_files.append(item)
+        if item.is_file() and item.suffix.lower() in normalized_extensions:
+            if is_junk_path(item, scan_directory):
+                skipped_junk += 1
+                logging.debug(f"Skipping system/junk audio file: {item}")
+                continue
+            found_files.append(item)
+
+    # Only audio-shaped entries are tallied on either side, so
+    # "Found N" + "Skipped M" explains the audio files the scan actually saw.
+    if skipped_junk:
+        logging.info(JUNK_SKIPPED_MSG.format(count=skipped_junk))
 
     logging.info(f"Found {len(found_files)} files matching extensions.")
     return found_files
@@ -87,6 +107,9 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         process = subprocess.run(
             [
                 "ffmpeg",
+                "-hide_banner",  # Drop the multi-line version/config dump from logs
+                "-loglevel",
+                "error",  # Only emit actual errors, not info lines
                 "-i",
                 str(source_file),
                 "-acodec",
@@ -107,8 +130,16 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
         )
 
         if process.returncode != 0:
-            logging.error(f"FFmpeg error converting {source_file.name}. Return code: {process.returncode}")
-            logging.error(f"FFmpeg stderr: {process.stderr.decode('utf-8', errors='ignore')}")
+            stderr_text = process.stderr.decode("utf-8", errors="ignore").strip()
+            if is_junk_file(source_file.name) and any(pattern in stderr_text for pattern in JUNK_FFMPEG_PATTERNS):
+                # A pattern match means stderr is non-empty, so the last line exists.
+                logging.warning(
+                    f"Skipped '{source_file}' (system metadata/junk file, not a real audio stream; "
+                    f"rc={process.returncode}): {stderr_text.splitlines()[-1]}"
+                )
+            else:
+                logging.error(f"FFmpeg error converting {source_file}. Return code: {process.returncode}")
+                logging.error(f"FFmpeg stderr: {stderr_text}")
             if target_wav_file.exists():  # Clean up partially created file
                 try:
                     target_wav_file.unlink()
@@ -203,7 +234,7 @@ def process_source_file(
         else:
             wav_files_for_transcription.append(target_wav_path)
     else:
-        logging.warning(f"Failed to convert {source_file.name}, it will be skipped for transcription.")
+        logging.warning(f"Failed to convert {relative_to_raw}, it will be skipped for transcription.")
         summary["conversion_failed"] += 1
 
 
