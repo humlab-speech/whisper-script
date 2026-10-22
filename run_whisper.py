@@ -22,6 +22,7 @@ from audio_chunking import (  # noqa: E402
     save_chunk_map,
     split_audio_into_chunks,
 )
+from junk_filter import is_junk_dir, is_junk_file  # noqa: E402
 
 # --- Configuration ---
 # Default extensions for conversion (can be overridden by command line)
@@ -53,18 +54,12 @@ def check_ffmpeg() -> bool:
     return True
 
 
-def is_junk_file(name: str) -> bool:
-    """Return True for macOS AppleDouble (._*, .__*), any other dot-file (incl. .DS_Store)
-    and Windows Office temp/lock files (~$*)."""
-    return name.startswith(".") or name.startswith("~$")
-
-
-# FFmpeg stderr fragments that mark a file as unreadable junk (AppleDouble shells,
-# truncated metadata stubs) rather than a real conversion failure worth an ERROR log.
+# FFmpeg error-level stderr fragments that mark a file as unreadable metadata/junk.
+# Only error-level phrases: the conversion runs with -loglevel error, so
+# warning-level noise like "misdetection possible" never reaches us.
 JUNK_FFMPEG_PATTERNS = (
-    "misdetection possible",
-    "Could not seek to",
     "Invalid data found when processing input",
+    "Could not seek to",
     "Invalid argument",
 )
 
@@ -82,13 +77,19 @@ def find_convertible_files(scan_directory: Path, target_extensions: tuple, recur
 
     iterator = scan_directory.rglob("*") if recursive else scan_directory.glob("*")
 
+    skipped_junk = 0
     for item in iterator:
         if item.is_file():
-            if any(is_junk_file(part) for part in item.relative_to(scan_directory).parts):
+            parts = item.relative_to(scan_directory).parts
+            if any(is_junk_dir(part) for part in parts[:-1]) or is_junk_file(parts[-1]):
+                skipped_junk += 1
                 logging.debug(f"Skipping system/junk path: {item}")
                 continue
             if item.suffix.lower() in normalized_extensions:
                 found_files.append(item)
+
+    if skipped_junk:
+        logging.info(f"Skipped {skipped_junk} system/junk file(s) (AppleDouble, dot-files, lock files).")
 
     logging.info(f"Found {len(found_files)} files matching extensions.")
     return found_files
@@ -130,13 +131,16 @@ def convert_audio_to_wav_file(source_file: Path, target_wav_file: Path) -> bool:
 
         if process.returncode != 0:
             stderr_text = process.stderr.decode("utf-8", errors="ignore")
-            if any(pattern in stderr_text for pattern in JUNK_FFMPEG_PATTERNS):
+            last_line = stderr_text.strip().splitlines()[-1] if stderr_text.strip() else "no stderr"
+            if is_junk_file(source_file.name) and any(pattern in stderr_text for pattern in JUNK_FFMPEG_PATTERNS):
                 logging.warning(
-                    f"Skipped '{source_file.name}' (not a valid audio stream, likely metadata/junk): "
-                    f"{stderr_text.strip().splitlines()[-1] if stderr_text.strip() else 'no stderr'}"
+                    f"Skipped '{source_file}' (system metadata/junk file, not a real audio stream; "
+                    f"rc={process.returncode}): {last_line}"
                 )
             else:
-                logging.error(f"FFmpeg error converting {source_file.name}. Return code: {process.returncode}")
+                logging.error(
+                    f"FFmpeg error converting {source_file}. Return code: {process.returncode}",
+                )
                 logging.error(f"FFmpeg stderr: {stderr_text}")
             if target_wav_file.exists():  # Clean up partially created file
                 try:
@@ -232,7 +236,7 @@ def process_source_file(
         else:
             wav_files_for_transcription.append(target_wav_path)
     else:
-        logging.warning(f"Failed to convert {source_file.name}, it will be skipped for transcription.")
+        logging.warning(f"Failed to convert {relative_to_raw}, it will be skipped for transcription.")
         summary["conversion_failed"] += 1
 
 

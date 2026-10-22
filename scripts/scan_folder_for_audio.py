@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 
+from junk_filter import is_junk_dir, is_junk_file
 from tqdm import tqdm  # For the progress bar
 
 
@@ -102,10 +103,18 @@ def scan_and_process_files(folder_path, file_extension):
 
     abs_folder_path = os.path.abspath(folder_path)
     tqdm.write("Scanning for files...")
-    for root, _, files in os.walk(abs_folder_path):
+    skipped_junk = 0
+    for root, dirs, files in os.walk(abs_folder_path):
+        dirs[:] = [d for d in dirs if not is_junk_dir(d)]
         for filename in files:
+            if is_junk_file(filename):
+                skipped_junk += 1
+                continue
             if filename.lower().endswith(file_extension):
                 filepaths_to_process.append(os.path.join(root, filename))
+
+    if skipped_junk:
+        tqdm.write(f"Skipped {skipped_junk} system/junk file(s) (AppleDouble, dot-files, lock files).")
 
     if not filepaths_to_process:
         tqdm.write(f"No files found with extension '{file_extension}'.")
